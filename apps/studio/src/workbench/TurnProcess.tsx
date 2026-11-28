@@ -23,6 +23,7 @@ import {
   DisclosureChevron,
   focusRing,
   fontWeights,
+  MetaDot,
   RollNumber,
   ThinkingStep,
   ThinkingStepSource,
@@ -66,6 +67,9 @@ const PHASE_STATUS = {
   failed: 'failed',
   cancelled: 'cancelled',
 } as const;
+const NAMED_IN_TOGGLE = new Set(['role', 'status']);
+const TOGGLE_LINE =
+  'relative flex h-full min-w-0 items-center gap-1.5 overflow-hidden rounded-sm hover:text-foreground has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-solid has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-[color:var(--focus-ring)]';
 const ENDED_SHORT = new Set<Presence['kind']>(['failed', 'cancelled']);
 const ENDED = new Set<Presence['kind']>(['succeeded', 'failed', 'interrupted', 'cancelled']);
 function useElapsed(from: string | null, to: string | null, active: boolean) {
@@ -341,14 +345,13 @@ export function TurnProcess({
         }
       : null,
   ].filter((value) => value !== null);
-  const line = (
-    <>
-      <span className="inline-flex size-3 shrink-0 items-center justify-center">
-        {canOpen ? <DisclosureChevron open={shown} size={12} className="text-current" /> : null}
-      </span>
-      <MetaLine values={values} />
-    </>
+  const chevron = (
+    <span className="inline-flex size-3 shrink-0 items-center justify-center">
+      {canOpen ? <DisclosureChevron open={shown} size={12} className="text-current" /> : null}
+    </span>
   );
+  const inToggle = values.filter((value) => NAMED_IN_TOGGLE.has(value.key));
+  const beside = values.filter((value) => !NAMED_IN_TOGGLE.has(value.key));
   const modelDescription = (row: Extract<ProcessRow, { kind: 'model' }>) => {
     const phase =
       row.phase === 'preparing'
@@ -390,32 +393,37 @@ export function TurnProcess({
     >
       <RunHead trailing={trailing}>
         {canOpen ? (
-          <button
-            type="button"
-            // A stable name: what the line says but the ticking time, so a failed step is told
-            // before the log opens (chat-widgets-contract.md §6.3).
-            aria-label={t('logToggle', {
-              state: [
-                role,
-                words(presence),
-                summary.steps ? t('steps', { count: summary.steps }) : null,
-                failed ? t('failedCount', { count: failed }) : null,
-              ]
-                .filter(Boolean)
-                .join(' · '),
-            })}
-            aria-expanded={shown}
-            aria-controls={panel}
-            onClick={() => onOpenChange(!shown)}
-            className={cn(
-              'flex h-full min-w-0 cursor-pointer items-center gap-1.5 overflow-hidden rounded-sm text-left hover:text-foreground',
-              focusRing,
-            )}
-          >
-            {line}
-          </button>
+          <span className={TOGGLE_LINE}>
+            <button
+              type="button"
+              // A stable name without the ticking time; the button holds only words of that name
+              // and the rest of the line lies under its pressing area (chat-widgets-contract.md).
+              aria-label={t('logToggle', {
+                state: [
+                  role,
+                  words(presence),
+                  summary.steps ? t('steps', { count: summary.steps }) : null,
+                  failed ? t('failedCount', { count: failed }) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · '),
+              })}
+              aria-expanded={shown}
+              aria-controls={panel}
+              onClick={() => onOpenChange(!shown)}
+              className="flex h-full min-w-0 cursor-pointer items-center gap-1.5 text-left outline-none after:absolute after:inset-0 after:z-[1]"
+            >
+              {chevron}
+              <MetaLine values={inToggle} />
+            </button>
+            {inToggle.length && beside.length ? <MetaDot /> : null}
+            <MetaLine values={beside} />
+          </span>
         ) : (
-          <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">{line}</span>
+          <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+            {chevron}
+            <MetaLine values={values} />
+          </span>
         )}
       </RunHead>
       {canOpen ? (

@@ -5,7 +5,7 @@
 | 개념 | 화면 이름 (EN / KO) | 코드·URL 이름 | 화면에 쓰지 않는 이름 |
 |---|---|---|---|
 | 요청과 그 실행을 담는 작업 단위 | Conversation / 대화 | `session`, `/sessions/$id` | 세션·session(이 뜻으로), 채팅방, 작업 보드, Task board, 백로그 |
-| 요청 하나로 시작한 처리 | Run / 실행 | `run`, `/runs/$id` | Execution(이 뜻으로), 작업, 잡 |
+| 요청 하나로 시작한 처리 | Run / 실행. 국문에서 세는 말은 "개"다(실행 2개) | `run`, `/runs/$id` | Execution(이 뜻으로), 작업, 잡, 실행 2회(실행의 수를 셀 때) |
 | 실행 안의 역할별 처리 | Execution / 실행 단위 | `execution` | 실행·Run(이 뜻으로) |
 | 저장해 두고 다시 쓰는 역할 구성 | Corral / Corral | `corral`, `/library/teams` | 팀·team(저장한 구성의 이름으로), 워크플로 |
 | 여러 역할이 함께 일하는 구성을 이르는 보통명사, 그래프에서 단계를 묶는 상자 | team·Team / 팀 | 상자 `team` | — |
@@ -17,8 +17,10 @@
 | 실행 결과물 | Results / 결과 | 패널 `artifacts`, 슬래시 `/results` | Artifacts |
 | 대화의 실행이 원본 폴더 대신 쓰는 격리 사본 | Paddock / Paddock | `worktree`, scope `session` | Conversation working copy, working copy, 대화 작업 사본, 작업 사본, 세션 작업 사본, 세션 복사본, 작업 복사본 |
 | 한 세션의 Paddock에서 갈라 나온 세션 | Sub-session / 서브세션 | `parentSessionId`, `sub-sessions` | Child session, 하위 세션, 자식 세션, branch(대화에서 갈라 만든 세션과 섞어) |
+| Paddock이 없는 대화에서 변경 탭의 Paddock 준비 화면을 여는 동작 | Set up a Paddock / Paddock 준비 | 패널 `changes` | Set up file work / 파일 작업 준비, Link a folder / 폴더 연결, Trust the folder / 폴더 신뢰, Make a Paddock / Paddock 만들기(가기만 하는 버튼의 이름으로) |
+| Paddock을 실제로 만드는 동작 | Make a Paddock / Paddock 만들기. 준비 화면의 버튼은 시작하는 커밋을 붙인다(Make a Paddock from {커밋} / {커밋}에서 Paddock 만들기) | `createWorktree`, 슬래시 `/copy` | Set up a Paddock / Paddock 준비(만드는 버튼의 이름으로) |
 | 새 Paddock마다 한 번 도는, 프로젝트에 적어 둔 셸 명령 | Setup command / 준비 명령 | `setupCommand`, operation `setup`, 환경 변수 `CORRAL_SOURCE_DIR`, [준비 명령](features/paddock-setup.md) | 사본 준비(서브세션의 사본을 만드는 일), 설치 명령, 초기화 스크립트, bootstrap, hook · 훅, 검사 |
-| 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
+| 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더. 프로젝트 안의 화면에서는 source folder / 원본 폴더로 줄여 쓴다 | `binding`, scope `project` | Linked folder / 연결된 폴더, 꾸미는 말 없는 folder / 폴더와 repository / 저장소(이 폴더를 가리킬 때) |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
 | 파일 하나를 연 패널의 탭 | 문서 탭 | 패널 `document` | 파일 탭(이 뜻으로), 창 |
 | 저장 팀의 그래프를 고치는 패널의 탭 | 팀 그래프 탭(탭 이름은 팀 이름) | 패널 `graph` | 도킹 탭, 설계 창 |
@@ -35,6 +37,9 @@
 | 프로젝트의 원본 폴더·Paddock 보기 | Environment / 환경 | 프로젝트 탭 `environment` | 작업 환경 설정 |
 | 경로로 파일 찾아 열기 | Quick open / 빠른 열기 | `quickOpen` | 파일 검색(내용 검색과 구분) |
 | 대화의 검사 명령 기록 | Checks / 검사 | `verifications` | 검증됨(통과 보장처럼 읽힘) |
+| 내용을 보았다는 기록. Paddock 전체를 지금까지 읽었다고 남기는 기준점과, 다른 비교에서 이미 본 파일의 표시 | Mark all read up to now / 지금까지 모두 읽음(남기는 동작), Since marked read / 읽음 기록 이후(그 뒤만 보는 비교 범위), Unread file writes / 읽지 않은 파일 쓰기(읽음 기록 뒤의 쓰기를 알리는 확인 필요 항목), Read in another comparison / 다른 비교에서 읽음(파일의 표시) | `POST /sessions/:id/reviewed`, `reviewedAt`, 범위 `review`, inbox `unreviewed` | 검토함 · Reviewed, 확인함, 승인(이 뜻으로) |
+| 한 비교에서 파일 하나의 변경을 검토했다는, 이 브라우저의 표시 | Reviewed / 검토함, Mark reviewed / 검토함 표시 | `changeReviewKey` | 읽음, 승인(이 뜻으로) |
+| 변경 전체에 내리는 사람의 판단 | Approve these changes / 이 변경 승인, Mark as needing changes / 수정 필요로 표시 | `ReviewService`의 decision | 검토함, 읽음(이 뜻으로) |
 | 실행 상태와 일시정지·재개·중지를 한 줄로 보이는 컴포저 위의 줄 | Activity bar / 활동 바 | `ActivityBar` | 실행 조작 알약, 한 줄 상태, 진행 중 실행 제어 |
 | 달리는 실행을 다루는 자리(지시, 일시정지·재개·중지, 실행 단위의 취소·다시 시작) | Reins / Reins | `reins`, 메시지 `Reins`, [Reins 상태 계약](features/reins.md) | Run controls / 실행 조작(이름표로), Give instruction / 지시하기(영역의 제목으로. 그 영역을 여는 동작의 이름으로는 쓴다), Steer |
 | Run 전체를 끝내는 조작 | Stop the run / 실행 중지(버튼 자리가 좁으면 Stop / 중지) | 명령 `cancel`(Run 범위) | 이 뜻으로: 실행 전체 취소, 실행 중단, Cancel whole run. 취소 · Cancel은 실행 단위 하나를 끝내는 조작의 이름이다 |
@@ -68,6 +73,8 @@
 | 조언의 심각도 | Note / 참고, Concern / 우려, Blocker / 중단 권고 | `nit`, `concern`, `blocker` | — |
 | 답변의 일부를 골라 요청에 싣는 일 | Quote / 인용 | 첨부 출처 `reply`, 단축키 `reply.quote` | 발췌, 스니펫 |
 | 사람이 계속할지 정하는 응답 | Continue? / 계속 여부 | 회의 `hold` | 한도 초과(끝난 것처럼 읽힘) |
+
+화면에 보이는 문장은 두 언어의 메시지 파일에 있다. 서버나 core가 거절한 까닭은 코드가 있으면 Studio가 그 코드의 문장으로 말하고, 영어 원문을 그대로 보이지 않는다: 다른 곳에서 저장된 Corral, 한꺼번에 몰린 요청(HTTP 429, "Too many requests at once. Try again in a moment." / "요청이 한꺼번에 너무 많았습니다. 잠시 뒤 다시 시도하세요."), 예약 화면의 거절([Workbench](workbench.md#전역-셸과-화면-틀))이 그렇다.
 
 기본 프로젝트의 표시 이름은 예약 선택기와 프로젝트 탐색에서 같은 지역화 값을 사용한다. 실행 비교의 복귀 링크는 실제 이동 대상인 프로젝트 홈을 가리킨다. 반영 뒤 외부에서 바뀐 파일을 되돌리지 않은 결과는 변경 시점과 보존한 이유를 함께 설명한다.
 
@@ -118,4 +125,5 @@ Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 �
   - Instructions: 역할의 프롬프트, 실행 단위에 보내는 지시, 프로젝트 지침.
   - `Docking.conversation`과 `Docking.chat`은 같은 값을 가진 두 키다.
   - 저장하지 않고 쓰는 자동 구성: 컴포저는 "Auto / 자동", 새 대화 만들기와 대화 메뉴는 "Default chat / 기본 대화"라고 부른다.
+  - 프로젝트 원본 폴더: 영문의 반영 문구(`Review.integrateHeading`, `Review.integrateNote`, `Hunks.planOriginal`, `Hunks.applyOriginal`)는 아직 꾸미는 말 없이 "the folder"라고 쓴다. 같은 자리의 국문은 "원본 폴더"다. 설정의 신뢰 스위치(`Files.trust`)는 그 폴더가 Git 저장소일 때 "Trust this repository / 이 저장소를 신뢰"라고 쓴다.
 - 실행 상태의 낱말은 [표시 상태](features/presence.md)의 것 하나로 쓰지만, 문구 키는 `Presence`·`RunStatus`·`Status`·`RunPage`·`RunReasons`·`Events` 네임스페이스에 나뉘어 있다. 낱말을 바꿀 때는 이 여러 곳을 함께 고친다.

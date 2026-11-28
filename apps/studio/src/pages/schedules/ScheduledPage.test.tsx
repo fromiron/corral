@@ -611,7 +611,8 @@ it('keeps the reason New schedule is disabled after a failed read, and never cla
 });
 
 const form = () => container.querySelector<HTMLFormElement>('form');
-const refused = (message: string, status: number) => Object.assign(new Error(message), { status });
+const refused = (message: string, status: number, code?: string) =>
+  Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
 
 it('a refused save shows its reason inside the form, right above Save, and moves focus to it', async () => {
   fixture.api.create.mockRejectedValueOnce(refused('Choose a future occurrence.', 400));
@@ -629,6 +630,38 @@ it('a refused save shows its reason inside the form, right above Save, and moves
   expect(alert?.contains(document.activeElement)).toBe(true);
   // Nothing says it again above the list.
   expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+});
+
+it('a refusal with a code is said in Studio’s own words, never the server’s English', async () => {
+  fixture.api.create.mockRejectedValueOnce(
+    refused('Invalid schedule fields.', 400, 'SCHEMA_INVALID'),
+  );
+  await page();
+  await click(button('New schedule'));
+  await type(field('Title'), 'Daily project review');
+  await type(field('Request'), 'Summarize the available information.');
+  await click(button('Save schedule'));
+  await settle();
+  const alert = form()?.querySelector<HTMLElement>('[role="alert"]');
+  expect(alert?.textContent).toContain(messages.Schedules.fieldsRefused);
+  expect(alert?.textContent).not.toContain('Invalid schedule fields.');
+});
+
+it('a delete refused because the schedule changed elsewhere says so in Studio’s own words', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.remove.mockRejectedValueOnce(
+    refused('Schedule changed. Reload before deleting.', 409, 'REVISION_CONFLICT'),
+  );
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.delete));
+  await click(button(messages.Schedules.confirmDelete));
+  await settle();
+  const alerts = [...container.querySelectorAll<HTMLElement>('[role="alert"]')];
+  expect(alerts.map((alert) => alert.textContent).join(' ')).toContain(
+    messages.Schedules.changedElsewhere,
+  );
+  expect(container.textContent).not.toContain('Reload before deleting');
 });
 
 it('an unknown time zone is that field’s own error and nothing is sent', async () => {

@@ -244,7 +244,12 @@ export function ProjectsPage() {
                       ) : null}
                     </TableCell>
                     <TableCell className="max-md:hidden">
-                      {t('counts', { corrals: corralCount, runs: runCount })}
+                      {[
+                        corralCount ? t('corralCount', { count: corralCount }) : null,
+                        runCount ? t('runCount', { count: runCount }) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{ago(project.updatedAt)}</TableCell>
                     {/* Without the cell's own padding the archive button fits the height a text

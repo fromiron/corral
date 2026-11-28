@@ -221,6 +221,12 @@ export function diagnosticRows(report: DiagnosticsReport): DiagnosticRow[] {
   ];
 }
 
+export function shownDiagnosticRows(report: DiagnosticsReport): DiagnosticRow[] {
+  return diagnosticRows(report).filter(
+    (row) => row.id !== 'pathEngine' || row.tone === 'attention' || row.tone === 'error',
+  );
+}
+
 const LABELS: Record<DiagnosticId, string> = {
   models: 'model connection',
   server: 'runtime',

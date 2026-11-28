@@ -48,7 +48,6 @@ const W = {
   files: messages.Docking.files,
   closeFiles: messages.SessionPanel.close.replace('{name}', messages.Docking.files),
   maximize: messages.SessionPanel.maximize,
-  restore: messages.SessionPanel.restore,
 };
 /** Beside the conversation at this work area, with 900px remembered, the panel is 900px wide. */
 const ROOMY = 1600;
@@ -234,7 +233,8 @@ it('패널이 옆이고 폭이 740px이며 파일 · a.ts 탭에서 파일 탭�
   expect(search(shell)).toMatchObject({ panel: 'document', file: 'a.ts' });
   expect(shell.history.length).toBe(entries);
 
-  await act(async () => button(W.restore)?.click());
+  expect(button(W.maximize)?.getAttribute('aria-pressed')).toBe('true');
+  await act(async () => button(W.maximize)?.click());
   await until(() => tabNames().length === 2);
   expect(tabNames()).toEqual([W.files, 'a.ts']);
   expect(selectedName()).toBe('a.ts');

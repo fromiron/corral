@@ -181,7 +181,7 @@ for (const locale of ['en', 'ko'] as const) {
         });
         await page.goto(`${corral.server.url}/sessions/${session.sessionId}?panel=files`);
         const files = page.getByTestId('file-panel');
-        const setup = files.getByRole('link', { name: m.Sessions.prepareWorkingCopy });
+        const setup = files.getByRole('link', { name: m.Files.makeCopyThere });
         await expect(setup).toBeVisible();
         await expect(
           files.getByText(

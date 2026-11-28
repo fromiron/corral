@@ -61,6 +61,16 @@ function scheduleDraft(schedule: Schedule): ScheduleDraft {
 const message = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 const statusOf = (cause: unknown) =>
   typeof cause === 'object' && cause && 'status' in cause ? cause.status : undefined;
+const REFUSALS = {
+  REVISION_CONFLICT: 'changedElsewhere',
+  TARGET_NOT_FOUND: 'gone',
+  SCHEMA_INVALID: 'fieldsRefused',
+  SESSION_INVALID: 'sessionEnded',
+} as const;
+const refusalKey = (cause: unknown) =>
+  typeof cause === 'object' && cause && 'code' in cause
+    ? REFUSALS[cause.code as keyof typeof REFUSALS]
+    : undefined;
 const focusOnMount = (node: HTMLElement | null) => node?.focus();
 const knownZone = (zone: string) => ScheduleDraft.shape.timezone.safeParse(zone).success;
 const NEW = 'new';
@@ -82,6 +92,10 @@ const readTarget = (
 export function ScheduledPage() {
   const { repository, models, mode, live, transport } = useServices();
   const t = useTranslations('Schedules');
+  const said = (cause: unknown) => {
+    const key = refusalKey(cause);
+    return key ? t(key) : message(cause);
+  };
   const tp = useTranslations('Projects');
   const shell = useTranslations('Shell');
   const format = useFormatter();
@@ -165,7 +179,7 @@ export function ScheduledPage() {
       );
       setReadError(null);
       setListRead(true);
-    } else setReadError(message(listed.reason));
+    } else setReadError(said(listed.reason));
   };
   const readRef = useRef(readSchedules);
   readRef.current = readSchedules;
@@ -245,7 +259,7 @@ export function ScheduledPage() {
   }, [mode]);
   const perform = async (
     action: () => Promise<void>,
-    fail: (cause: unknown) => void = (cause) => setError(message(cause)),
+    fail: (cause: unknown) => void = (cause) => setError(said(cause)),
   ) => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -277,7 +291,7 @@ export function ScheduledPage() {
     setSaveError({
       id: ++refusals.current,
       conflict: status === 409 && Boolean(editing?.base),
-      text: status === 404 && editing?.base ? t('deletedElsewhere') : message(cause),
+      text: status === 404 && editing?.base ? t('deletedElsewhere') : said(cause),
     });
   };
   const latest = async (id: string) => {

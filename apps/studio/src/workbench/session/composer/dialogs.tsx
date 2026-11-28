@@ -163,7 +163,7 @@ export function StopRunDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>{tr('cancelRun')}</DialogTitle>
+          <DialogTitle>{tr('cancelRunQuestion')}</DialogTitle>
           <DialogDescription>
             {tr('cancelRunExplain')} {tr('cancelNotSent')}
           </DialogDescription>

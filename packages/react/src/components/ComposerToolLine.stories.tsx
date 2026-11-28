@@ -140,7 +140,7 @@ type Story = StoryObj<typeof meta>;
 
 function parts(canvasElement: HTMLElement) {
   const canvas = within(canvasElement);
-  const model = canvas.getByRole('button', { name: 'Model' });
+  const model = canvas.getByRole('button', { name: /^Model(: .+)?$/ });
   return {
     attach: canvas.getByRole('button', { name: 'Attachments' }).getBoundingClientRect(),
     advisor: canvasElement.querySelector('[data-slot="composer-advisor"]')?.getBoundingClientRect(),
@@ -207,7 +207,7 @@ export const ShortNameShowsTheHint: Story = {
 export const ChipCutToAStub: Story = {
   args: { width: 352 },
   play: async ({ canvasElement }) => {
-    const trigger = within(canvasElement).getByRole('button', { name: 'Model' });
+    const trigger = within(canvasElement).getByRole('button', { name: /^Model(: .+)?$/ });
     const slot = canvasElement
       .querySelector('[class*="sm:overflow-x-clip"]')
       ?.getBoundingClientRect();
@@ -259,7 +259,7 @@ export const LongTeamAndModelNames: Story = {
     );
     expect(teamName?.scrollWidth).toBeGreaterThan(teamName?.clientWidth ?? 0);
     // The model chip still shows its marks.
-    const model = canvas.getByRole('button', { name: 'Model' }).getBoundingClientRect();
+    const model = canvas.getByRole('button', { name: /^Model(: .+)?$/ }).getBoundingClientRect();
     expect(model.width).toBeGreaterThanOrEqual(56);
     // One row.
     const attach = canvas.getByRole('button', { name: 'Attachments' }).getBoundingClientRect();

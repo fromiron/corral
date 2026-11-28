@@ -101,7 +101,7 @@ describe('composer model picker', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Low' }));
     expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeDisabled();
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Model' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Model: Provider B · Model B' })).toBeDisabled();
   });
 
   it('keeps an unsupported automatic setting selected but only accepts supported replacements', async () => {

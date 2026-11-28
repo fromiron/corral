@@ -80,13 +80,13 @@ test('file setup remains reachable after a request without a working copy', asyn
   // One icon button in the composer row says it, by its name and tooltip, and nothing above the
   // conversation repeats it.
   const setup = page.getByRole('button', {
-    name: 'The agent cannot read or change files. Link a folder.',
+    name: 'The agent cannot read or change files. Set up a Paddock.',
     exact: true,
   });
   await expect(setup).toHaveText('');
   await setup.hover();
   await expect(page.getByRole('tooltip')).toHaveText(
-    'The agent cannot read or change files. Link a folder.',
+    'The agent cannot read or change files. Set up a Paddock.',
   );
   await expect(page.getByTestId('chat-timeline')).not.toContainText(
     'The agent cannot read or change files.',

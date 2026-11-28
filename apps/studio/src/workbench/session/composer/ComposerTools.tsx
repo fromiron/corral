@@ -314,7 +314,7 @@ export function RequestTools({
             labels={{
               model: t('autoModel'),
               settings: tc('modelPicker.settings'),
-              trigger: () => t('autoModel'),
+              trigger: (name) => (name ? t('autoModelNamed', { name }) : t('autoModel')),
               empty: tc('modelPicker.demoEmpty'),
             }}
           />

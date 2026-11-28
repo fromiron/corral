@@ -149,6 +149,18 @@ it('lists the projects first, as a table, with one New project action and no for
   expect(button(container, messages.Projects.new).textContent).toBe(messages.Projects.new);
 });
 
+it('a row’s meta writes only the counts it has, and nothing when both are zero', async () => {
+  fixture.data = {
+    ...fixture.data,
+    corrals: [{ projectId: 'default' }, { projectId: 'default' }] as never,
+  };
+  const container = await show();
+  const meta = [...container.querySelectorAll('table tbody tr')].map(
+    (row) => row.querySelectorAll('td')[1]?.textContent,
+  );
+  expect(meta).toEqual(['2 Corrals', '']);
+});
+
 it('New project opens a dialog holding the form, its name focused', async () => {
   const container = await show();
   await act(async () => button(container, messages.Projects.new).click());

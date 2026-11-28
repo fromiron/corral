@@ -109,7 +109,7 @@ export function AutoModelMenu({
       labels={{
         model: t('autoModel'),
         settings: tc('modelPicker.settings'),
-        trigger: () => t('autoModel'),
+        trigger: (name) => (name ? t('autoModelNamed', { name }) : t('autoModel')),
         empty: tc('modelPicker.empty'),
         // The same mark, by the same name, as a connection's model list.
         image: tn('image'),

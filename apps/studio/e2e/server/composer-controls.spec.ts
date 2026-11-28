@@ -31,7 +31,7 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
   await corral.open('/');
   await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await requestBox(page).fill('Keep this request');
-  const chip = page.getByRole('button', { name: 'Model', exact: true });
+  const chip = page.getByRole('button', { name: /^Model(: .+)?$/ });
   const settings = page.getByRole('dialog', { name: 'Model settings', exact: true });
   await chip.click({ timeout: 3000 });
   const policy = settings.getByRole('combobox', { name: 'Reasoning effort' });

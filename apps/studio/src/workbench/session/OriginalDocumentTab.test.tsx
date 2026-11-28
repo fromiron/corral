@@ -184,7 +184,7 @@ it('without a Paddock, says under its head why it is read-only and links to the 
   const note = container.querySelector('[data-slot="banner"]');
   expect(note?.textContent).toContain(messages.Files.noCopyReadOnly);
   const link = note?.querySelector('a');
-  expect(link?.textContent).toBe(messages.Sessions.prepareWorkingCopy);
+  expect(link?.textContent).toBe(messages.Files.makeCopyThere);
   expect(link?.getAttribute('href')).toBe('/sessions/session?panel=changes');
   const head = container.querySelector('[data-testid="document-header"]');
   expect(head?.compareDocumentPosition(note as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);

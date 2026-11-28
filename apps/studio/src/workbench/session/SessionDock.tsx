@@ -257,9 +257,9 @@ export function SessionDock({
   const plusMenu =
     terminalRow || plus.debug ? (
       <Menu>
-        <Tooltip content={t('add')}>
+        <Tooltip content={t('addToDock')}>
           <MenuTrigger
-            render={<Button variant="ghost" size="icon-compact" aria-label={t('add')} />}
+            render={<Button variant="ghost" size="icon-compact" aria-label={t('addToDock')} />}
           >
             <Plus />
           </MenuTrigger>

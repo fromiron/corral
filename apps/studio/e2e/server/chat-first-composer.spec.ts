@@ -58,8 +58,8 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   await expect(page.getByRole('button', { name: 'Request options', exact: true })).toHaveCount(0);
   await expect(teamChip(page)).toContainText('No Corral');
   await expect(page.getByRole('button', { name: 'Attachments', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Model', exact: true })).not.toContainText(
+  await expect(page.getByRole('button', { name: /^Model(: .+)?$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Model(: .+)?$/ })).not.toContainText(
     'Keep existing behavior (unset)',
   );
   await expect(
@@ -190,7 +190,7 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
   expect((await session(page)).corralId).toBe(custom.corralId);
   await chooseTeam(page, 'No Corral');
   await expect.poll(async () => (await session(page)).corralId).toBeNull();
-  await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Model(: .+)?$/ })).toBeVisible();
 
   corral.fake?.answerWith('You can continue without selecting a Corral.');
   await requestBox(page).fill('Continue as a normal chat.');

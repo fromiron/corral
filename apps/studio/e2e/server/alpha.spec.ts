@@ -68,7 +68,7 @@ async function project(page: Page, corral: Harness, options: { check?: string } 
 
   await corral.open('/projects/default');
   const folder = await openFolderSettings(page);
-  await folder.getByLabel('Folder path on this computer').fill(original);
+  await folder.getByLabel('Path on this computer').fill(original);
   await folder.getByRole('button', { name: 'Link folder' }).click();
   const trust = folder.getByRole('switch', { name: /Trust this repository/ });
   await trust.click();

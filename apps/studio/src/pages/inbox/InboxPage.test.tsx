@@ -638,7 +638,7 @@ it('names a non-decision item fully on its row, and its detail is only the way t
     line: 'File writes with unknown outcome',
     rest: [],
   });
-  expect(await shown('Zero count')).toMatchObject({ line: 'Unreviewed file writes', rest: [] });
+  expect(await shown('Zero count')).toMatchObject({ line: 'Unread file writes', rest: [] });
   expect(container.textContent).not.toContain('not_a_state');
   expect(await shown('Shell owner')).toMatchObject({
     line: 'Terminal exit needs checking',

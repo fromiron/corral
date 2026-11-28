@@ -61,12 +61,12 @@ Entry: `conversation-running`, and first wait until `getByTestId('composer-desti
 
 ### stop-run, scenario several-roles (walked: `session-tasks-stop-run-mock-20261123-several-roles`)
 
-Entry: `conversation-running`, with nothing typed. Let `dialog = page.getByRole('dialog', { name: 'Stop the run', exact: true })`.
+Entry: `conversation-running`, with nothing typed. Let `dialog = page.getByRole('dialog', { name: 'Stop this run?', exact: true })`.
 
 | Transition | Do | Wait for |
 |---|---|---|
 | `run.stop-ask` | `page.getByTestId('composer-stop').click()` (named `Stop`) | `dialog`, holding `Keep running` and `Stop the run` |
-| `stop-confirm.confirm` | `dialog.getByRole('button', { name: 'Stop the run', exact: true }).click()`: the dialog's title has the same name, so scope the button to it | `[data-testid="activity-bar"][data-run="cancelled"]:not([data-live])`; the work log reads `Work log · Assistant · Cancelled · …` |
+| `stop-confirm.confirm` | `dialog.getByRole('button', { name: 'Stop the run', exact: true }).click()` | `[data-testid="activity-bar"][data-run="cancelled"]:not([data-live])`; the work log reads `Work log · Assistant · Cancelled · …` |
 
 The default scenario's `run.stop` lands on `stop-confirm` instead and is recorded as diverged (`session-tasks-stop-run-mock-20261123`); pass `elsewhere: { 'stop-confirm': () => dialog }` to `step()` so the record names it.
 
@@ -75,7 +75,7 @@ The default scenario's `run.stop` lands on `stop-confirm` instead and is recorde
 Read from the code at e9ca894f, or seen once while probing without a run record. Confirm each when you walk it, then move it into a walked section with its run.
 
 - **choose-team.** `team.open`: `req.getByRole('combobox', { name: 'Corral', exact: true })`; a listbox opens with the options `No Corral …`, `Auto …` and `Create or manage Corrals`. Option names carry a hint after the name, so match with `/^Auto/`. `team-menu.close`: Escape.
-- **choose-model.** `model.open`: `req.getByRole('button', { name: 'Model', exact: true })` opens the dialog `Model settings`. On a no-model server its only option is `model-a, Unavailable profile`, disabled, so `model.choose` cannot be reached in mode (b).
+- **choose-model.** `model.open`: `req.getByRole('button', { name: /^Model(: .+)?$/ })` opens the dialog `Model settings` (the chip is named `Model: <the model it shows>`, or `Model` while it shows none). On a no-model server its only option is `model-a, Unavailable profile`, disabled, so `model.choose` cannot be reached in mode (b).
 - **stop-run, the other Stop.** With text in the box, Stop is only in the open bar: `bar.getByRole('region', { name: 'Reins' }).getByRole('button', { name: 'Stop', exact: true })` (the `expanded.*` transitions). `stop-confirm.keep` is the dialog's `Keep running`.
 - **follow-active-run.** It needs run #1 ended and run #2 going in one conversation. At 1280x800 the earlier run's tab opens beside the conversation, which is the map's scenario `room`. The line with `View active run` (`getByTestId('run-active-elsewhere')`) shows only while the panel covers the conversation, as a drawer or maximized (`Maximize panel`).
 - **open-file.** It needs a linked folder. Files opens with `/files` in the request box or from the panel's empty list, not from a top button. Tree rows are `treeitem`s, and the tree is virtualized.
@@ -89,5 +89,5 @@ Read from the code at e9ca894f, or seen once while probing without a run record.
 - **Address.** Opening a run tab puts `?view=run&panel=run&run=…` in the address; closing the tab leaves `?compose=true`. Start every journey from `New conversation` in a fresh page, never from a reused address.
 - **Sliding pill.** The `Run views` pill slides after a click. A screenshot taken at once can catch it between tabs, and Playwright's `animations: 'disabled'` froze it on the wrong tab. The skeleton's wait for finite animations fixes the picture. `aria-selected` is the evidence either way.
 - **Mock delay.** At 1500 a live run lasts a few seconds, which is enough for the running entries if you act right after `data-live` appears. Tens of seconds make a stop end unconfirmed; this is reported from an earlier walk and was not re-checked here.
-- **The stop dialog outlives the run.** Left open, `Stop the run` stays on screen after the scripted run has finished on its own (seen once, Run #1 "Completed" behind the dialog).
+- **The stop dialog outlives the run.** Left open, `Stop this run?` stays on screen after the scripted run has finished on its own (seen once, Run #1 "Completed" behind the dialog).
 - **The list grows.** Each walk leaves its conversation in the sidebar of the same server. Restart the server on a new scratch workspace when a journey needs an empty list.

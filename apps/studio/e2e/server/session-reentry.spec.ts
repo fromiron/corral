@@ -30,7 +30,7 @@ test('sidebar reentry opens the conversation and search highlights its exact mes
   await page.reload();
   await page
     .getByRole('button', {
-      name: 'The agent cannot read or change files. Link a folder.',
+      name: 'The agent cannot read or change files. Set up a Paddock.',
       exact: true,
     })
     .click();
@@ -46,7 +46,7 @@ test('sidebar reentry opens the conversation and search highlights its exact mes
   await expect(page).toHaveURL(/[?&]panel=changes(?:&|$)/);
   await page
     .getByRole('button', {
-      name: 'The agent cannot read or change files. Link a folder.',
+      name: 'The agent cannot read or change files. Set up a Paddock.',
       exact: true,
     })
     .click();

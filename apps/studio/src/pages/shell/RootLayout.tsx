@@ -468,7 +468,9 @@ export function ErrorView({ error }: ErrorComponentProps) {
   return (
     <main role="alert" className="flex flex-col items-start gap-3 p-6">
       <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
-        {t('error', { message: error instanceof Error ? error.message : String(error) })}
+        {error instanceof ApiError && error.status === 429
+          ? t('tooManyRequests')
+          : t('error', { message: error instanceof Error ? error.message : String(error) })}
       </h2>
       <div className="flex gap-2">
         <Button variant="tertiary" size="compact" onClick={() => router.invalidate()}>

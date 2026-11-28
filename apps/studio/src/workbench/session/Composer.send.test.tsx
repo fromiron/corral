@@ -1200,7 +1200,7 @@ describe('Stop in Send’s place', () => {
         });
       }
       expect(cancels(f.sendCommand)).toHaveLength(0);
-      expect(asked()).toBe(messages.Reins.cancelRun);
+      expect(asked()).toBe(messages.Reins.cancelRunQuestion);
       await act(async () => confirmButton()?.click());
       expect(cancels(f.sendCommand)).toHaveLength(1);
     },
@@ -1226,7 +1226,7 @@ describe('Stop in Send’s place', () => {
         await act(async () => {});
       };
       await ask();
-      expect(asked()).toBe(messages.Reins.cancelRun);
+      expect(asked()).toBe(messages.Reins.cancelRunQuestion);
       await until(() => document.activeElement === keepButton());
       expect(document.activeElement).toBe(keepButton());
       expect(nextTab(keepButton() as HTMLElement)).toBe(confirmButton());
@@ -1245,7 +1245,7 @@ describe('Stop in Send’s place', () => {
     try {
       const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
       await act(async () => {});
-      expect(asked()).toBe(messages.Reins.cancelRun);
+      expect(asked()).toBe(messages.Reins.cancelRunQuestion);
       await until(() => document.activeElement === keepButton());
       expect(document.activeElement).toBe(keepButton());
       expect(f.sendCommand).not.toHaveBeenCalled();
@@ -1258,7 +1258,7 @@ describe('Stop in Send’s place', () => {
     const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
     await act(async () => stop(f.container)?.click());
     expect(cancels(f.sendCommand)).toHaveLength(0);
-    expect(asked()).toBe(messages.Reins.cancelRun);
+    expect(asked()).toBe(messages.Reins.cancelRunQuestion);
   });
 
   it('is not there while nothing runs', async () => {
@@ -1290,7 +1290,7 @@ describe('Stop in Send’s place', () => {
     });
     await act(async () => stop(f.container)?.click());
     expect(cancels(f.sendCommand)).toHaveLength(0);
-    expect(asked()).toBe(messages.Reins.cancelRun);
+    expect(asked()).toBe(messages.Reins.cancelRunQuestion);
   });
 
   it('opens the run’s record before it sends to it', async () => {

@@ -59,7 +59,7 @@ const W = {
   dock: messages.SessionPanel.dock,
   dockToggle: messages.SessionPanel.dockToggle,
   dockTabs: messages.SessionPanel.dockTabs,
-  add: messages.SessionPanel.add,
+  add: messages.SessionPanel.addToDock,
   terminal: (n: number) => messages.SessionPanel.terminalTab.replace('{number}', String(n)),
   debug: messages.SessionPanel.debugTab,
   runningDot: messages.Terminals.runningTab,

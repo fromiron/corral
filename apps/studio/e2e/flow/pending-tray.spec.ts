@@ -100,7 +100,7 @@ async function conversationWithWorkingCopy(page: Page, corral: Harness) {
   git('commit', '-q', '-m', 'tray source');
   await corral.open('/');
   const folder = await openFolderSettings(page);
-  await folder.getByLabel('Folder path on this computer').fill(original);
+  await folder.getByLabel('Path on this computer').fill(original);
   await folder.getByRole('button', { name: 'Link folder' }).click();
   const trust = folder.getByRole('switch', { name: /Trust this repository/ });
   await trust.click();

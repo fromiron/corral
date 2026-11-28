@@ -115,7 +115,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     // a trusted folder's session runs commands in the built-in work style.
     await corral.open('/');
     const folder = await openFolderSettings(page);
-    await folder.getByLabel('Folder path on this computer').fill(original);
+    await folder.getByLabel('Path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     const trust = folder.getByRole('switch', { name: /Trust this repository/ });
     await trust.click();

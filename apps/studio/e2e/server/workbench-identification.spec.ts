@@ -127,8 +127,7 @@ test.describe('model identification', () => {
       });
       await box.fill('Keep this unsent draft.');
       const model = page.getByRole('button', {
-        name: locale === 'en' ? 'Model' : '모델',
-        exact: true,
+        name: locale === 'en' ? /^Model(: .+)?$/ : /^모델(: .+)?$/,
       });
       // The chip names the chosen model by its name; the provider is the list's group.
       await expect(model).toContainText(longName);

@@ -76,8 +76,8 @@ it('says every folder state with one mark: no visible words, the sentence as its
     for (const [access, name] of [
       ['copy', 'agentCopy'],
       ['direct', 'agentDirect'],
-      ['unlinked', 'agentNoFiles linkFolder.'],
-      ['untrusted', 'agentNoFiles trustFolder.'],
+      ['unlinked', 'agentNoFiles makeCopyThere.'],
+      ['untrusted', 'agentNoFiles makeCopyThere.'],
       ['missing', 'agentFolderMissing checkFolder.'],
     ] as const) {
       await act(async () =>
@@ -117,7 +117,7 @@ it('says every folder state with one mark: no visible words, the sentence as its
   }
 });
 
-it('an unlinked folder is an icon button that says the agent cannot read or change files and offers linking', async () => {
+it('an unlinked folder is an icon button that says the agent cannot read or change files and offers the Paddock setup', async () => {
   fixture.binding.mockResolvedValue(null);
   fixture.worktree.mockResolvedValue(null);
   const action = vi.fn();
@@ -128,7 +128,7 @@ it('an unlinked folder is an icon button that says the agent cannot read or chan
     // No folder: the kit icon button alone on the tool line; the sentence is its name and tooltip.
     expect(chip?.textContent).toBe('');
     expect(chip?.querySelector('svg')).not.toBeNull();
-    expect(chip?.getAttribute('aria-label')).toBe('agentNoFiles linkFolder.');
+    expect(chip?.getAttribute('aria-label')).toBe('agentNoFiles makeCopyThere.');
     expect(container.querySelectorAll('button')).toHaveLength(1);
     await act(async () => chip?.click());
     expect(action).toHaveBeenCalledOnce();
@@ -137,14 +137,14 @@ it('an unlinked folder is an icon button that says the agent cannot read or chan
   }
 });
 
-it('an untrusted folder offers trust, and a trusted folder without a copy offers nothing', async () => {
+it('an untrusted folder offers the Paddock setup too, and a trusted folder without a copy offers nothing', async () => {
   fixture.binding.mockResolvedValue({ trusted: false, missing: false });
   fixture.worktree.mockResolvedValue(null);
   const { container, render, dispose } = await mount();
   try {
     await render('one', 'project', '');
     expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
-      'agentNoFiles trustFolder.',
+      'agentNoFiles makeCopyThere.',
     );
     fixture.binding.mockResolvedValue({ trusted: true, missing: false });
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
@@ -188,7 +188,7 @@ it('a missing folder offers the folder settings, and a failed lookup says nothin
     fixture.worktree.mockResolvedValue(null);
     await render('two', 'project', '');
     expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
-      'agentNoFiles linkFolder.',
+      'agentNoFiles makeCopyThere.',
     );
   } finally {
     await dispose();

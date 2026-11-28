@@ -244,6 +244,25 @@ it('the head and tail say nothing to assistive tech on their own', async () => {
   expect(part(f.container, 'tail')?.getAttribute('aria-live')).toBe('off');
 });
 
+it('the toggle holds only words its name says: the elapsed time stays outside it, on the same line', async () => {
+  const first = running();
+  const f = await show(answered(first));
+  const button = toggle(f.container);
+  const time = part(f.container, 'head')?.querySelector('[data-testid="turn-process-header"]');
+  expect(time).not.toBeNull();
+  expect(button?.contains(time ?? null)).toBe(false);
+  expect(button?.parentElement?.contains(time ?? null)).toBe(true);
+  const words = (text: string) => text.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const shown = words(
+    [...(button?.querySelectorAll('*') ?? [])]
+      .filter((node) => !node.children.length && node.getAttribute('aria-hidden') !== 'true')
+      .map((node) => node.textContent ?? '')
+      .join(' '),
+  );
+  expect(shown.length).toBeGreaterThan(0);
+  expect(words(button?.getAttribute('aria-label') ?? '').join(' ')).toContain(shown.join(' '));
+});
+
 it('a closed process stays closed when the run ends', async () => {
   const first = running();
   const f = await show(first);
@@ -324,7 +343,8 @@ it('names the head button by its role, state, steps and log, never by its tickin
   expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
     logName('writer', messages.Presence.state.working, '1 step'),
   );
-  expect(toggle(f.container)?.textContent).toMatch(/\d+s/);
+  expect(toggle(f.container)?.textContent).not.toMatch(/\d+s/);
+  expect(toggle(f.container)?.parentElement?.textContent).toMatch(/\d+s/);
   await f.set(failed(running()));
   expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
     logName('writer', messages.Status.failed, '1 step'),
@@ -369,9 +389,10 @@ it('the head button’s name stays the same while the time runs', async () => {
   try {
     const f = await show(running());
     const name = toggle(f.container)?.getAttribute('aria-label');
-    const time = toggle(f.container)?.textContent;
+    const line = () => toggle(f.container)?.parentElement?.textContent;
+    const time = line();
     await act(async () => vi.advanceTimersByTime(5_000));
-    expect(toggle(f.container)?.textContent).not.toBe(time);
+    expect(line()).not.toBe(time);
     expect(toggle(f.container)?.getAttribute('aria-label')).toBe(name);
   } finally {
     vi.useRealTimers();

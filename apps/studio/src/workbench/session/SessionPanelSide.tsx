@@ -28,7 +28,6 @@ import {
   ListChecks,
   LoaderCircle,
   Maximize2,
-  Minimize2,
   Monitor,
   Plus,
   Route,
@@ -469,7 +468,7 @@ export function SessionPanelSide({
   });
   const openedLabel = opened ? tabs.find((tab) => tab.id === opened.key)?.label : undefined;
   const maximized = state.presentation === 'maximized';
-  const maximizeLabel = t(maximized ? 'restore' : 'maximize');
+  const maximizeLabel = t('maximize');
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center border-b border-line px-2">
@@ -532,13 +531,13 @@ export function SessionPanelSide({
             maximizeAvailable(state) ? (
               <Tooltip content={maximizeLabel}>
                 <Button
-                  variant="ghost"
+                  variant={maximized ? 'secondary' : 'ghost'}
                   size="icon-compact"
                   aria-label={maximizeLabel}
                   aria-pressed={maximized}
                   onClick={onMaximize}
                 >
-                  {maximized ? <Minimize2 /> : <Maximize2 />}
+                  <Maximize2 />
                 </Button>
               </Tooltip>
             ) : null

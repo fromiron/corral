@@ -464,7 +464,7 @@ it('the turn process sits above the reply, closed while working and still closed
   // Finishing keeps the same element, closed, its steps counted on the head, above the answer.
   expect(log()).toBe(working);
   expect(expandedState()).toBe('false');
-  expect(toggle()?.textContent).toContain('1 step');
+  expect(toggle()?.parentElement?.textContent).toContain('1 step');
   expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
   // The answer is visible without opening anything.
   expect(f.container.querySelector('[data-testid="chat-result"]')?.closest('details')).toBeNull();
@@ -475,7 +475,7 @@ it('the turn process sits above the reply, closed while working and still closed
   );
   await act(async () => preferences.setState({ chatDensity: 'results' }));
   expect(expandedState()).toBe('false');
-  expect(toggle()?.textContent).toContain('1 step');
+  expect(toggle()?.parentElement?.textContent).toContain('1 step');
   expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
   expect(f.container.querySelector('[data-presence-label="run:run_density"]')?.textContent).toBe(
     messages.Presence.state.awaiting_user,

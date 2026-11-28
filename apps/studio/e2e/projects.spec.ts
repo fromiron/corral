@@ -14,7 +14,7 @@ import {
 // Teams are kept per project in the library (library.md), which shows the project opened last.
 
 const switcher = (page: Page) =>
-  page.getByRole('banner').getByRole('button', { name: /^Go to project: / });
+  page.getByRole('banner').getByRole('button', { name: /^Switch project: / });
 /** Opens a project from the sidebar, where every active project is listed by name. */
 const openProject = (page: Page, name: string) =>
   page.getByTestId('app-sidebar').getByRole('link', { name, exact: true }).first().click();

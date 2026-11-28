@@ -113,7 +113,7 @@ export function LibraryTeams({
     const file = event.target.files?.[0];
     event.target.value = '';
     void work(async () => {
-      if (!file) return ['Choose a definition file (.corral.json).'];
+      if (!file) return [t('importNoFile')];
       const imported = importDefinition(await file.text());
       if (!imported.ok) return imported.errors;
       const result = await repository.save({

@@ -9,7 +9,9 @@ export function registerScheduleRoutes(app: FastifyInstance, service: ScheduleSe
   app.post('/api/v1/schedules', async (request, reply) => {
     const parsed = ScheduleDraft.safeParse(request.body);
     if (!parsed.success)
-      return reply.code(400).send({ error: { message: 'Invalid schedule fields.' } });
+      return reply
+        .code(400)
+        .send({ error: { code: 'SCHEMA_INVALID', message: 'Invalid schedule fields.' } });
     try {
       return reply.code(201).send(await service.create(parsed.data));
     } catch (error) {
@@ -21,7 +23,9 @@ export function registerScheduleRoutes(app: FastifyInstance, service: ScheduleSe
       .strictObject({ draft: ScheduleDraft, expectedRevision: z.int().min(1) })
       .safeParse(request.body);
     if (!parsed.success)
-      return reply.code(400).send({ error: { message: 'Invalid schedule fields.' } });
+      return reply
+        .code(400)
+        .send({ error: { code: 'SCHEMA_INVALID', message: 'Invalid schedule fields.' } });
     try {
       return await service.update(
         request.params.id,
@@ -68,6 +72,8 @@ export function registerScheduleRoutes(app: FastifyInstance, service: ScheduleSe
 
 function failure(error: unknown, reply: import('fastify').FastifyReply) {
   if (error instanceof ScheduleError)
-    return reply.code(error.status).send({ error: { message: error.message } });
+    return reply
+      .code(error.status)
+      .send({ error: { ...(error.code ? { code: error.code } : {}), message: error.message } });
   throw error;
 }

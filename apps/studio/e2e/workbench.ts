@@ -150,7 +150,7 @@ export async function newConversationFromSidebar(page: Page) {
 export async function openProject(page: Page, name?: string) {
   const switcher = page
     .getByRole('navigation', { name: 'Current location', exact: true })
-    .getByRole('button', { name: /^Go to project: / });
+    .getByRole('button', { name: /^Switch project: / });
   if (name && !(await switcher.isVisible()))
     await page.getByTestId('app-sidebar').getByRole('link', { name, exact: true }).first().click();
   else {
@@ -458,7 +458,7 @@ export async function openPanelTab(
   if (await head.isVisible()) {
     await head
       .locator('[data-slot="tabs-closable-trailing"]')
-      .getByRole('button', { name: 'Open', exact: true })
+      .getByRole('button', { name: 'Open in panel', exact: true })
       .click();
     entry = page.getByRole('menuitem', { name: item, exact: true });
   } else
@@ -490,18 +490,17 @@ export async function selectPanelTab(page: Page, name: string | RegExp) {
  * is hidden behind it. A maximized panel is left as it is.
  */
 export async function maximizePanel(page: Page) {
-  const restore = sessionPanel(page).getByRole('button', { name: 'Restore panel', exact: true });
-  if (!(await restore.isVisible()))
-    await sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true }).click();
-  await expect(restore).toHaveAttribute('aria-pressed', 'true');
+  const maximize = sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true });
+  if ((await maximize.getAttribute('aria-pressed')) !== 'true') await maximize.click();
+  await expect(maximize).toHaveAttribute('aria-pressed', 'true');
 }
 
 /** Restores a maximized panel beside the conversation with its head's button. */
 export async function restorePanel(page: Page) {
-  await sessionPanel(page).getByRole('button', { name: 'Restore panel', exact: true }).click();
-  await expect(
-    sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'false');
+  const maximize = sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true });
+  await expect(maximize).toHaveAttribute('aria-pressed', 'true');
+  await maximize.click();
+  await expect(maximize).toHaveAttribute('aria-pressed', 'false');
 }
 
 /**
@@ -735,7 +734,7 @@ export async function stopRun(page: Page) {
  * named Stop the run. Its own answer carries the stop's name too, so it is found inside it.
  */
 export const stopConfirmation = (page: Page) =>
-  page.getByRole('dialog', { name: 'Stop the run', exact: true });
+  page.getByRole('dialog', { name: 'Stop this run?', exact: true });
 
 /** Confirms the whole-run stop the screen is asking about. */
 export async function confirmStop(page: Page) {

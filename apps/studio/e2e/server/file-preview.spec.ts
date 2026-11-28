@@ -68,7 +68,7 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
   try {
     await corral.open('/');
     const folder = await openFolderSettings(page);
-    await folder.getByLabel('Folder path on this computer').fill(original);
+    await folder.getByLabel('Path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     const trust = folder.getByRole('switch', { name: /Trust this repository/ });
     await expect(trust).toBeVisible();
@@ -220,7 +220,7 @@ test.describe('run-owned previews', () => {
     try {
       await corral.open('/');
       const folder = await openFolderSettings(page);
-      await folder.getByLabel('Folder path on this computer').fill(original);
+      await folder.getByLabel('Path on this computer').fill(original);
       await folder.getByRole('button', { name: 'Link folder' }).click();
       const trust = folder.getByRole('switch', { name: /Trust this repository/ });
       await trust.click();

@@ -171,7 +171,7 @@ test('live plans, context, manual collapse and an answer use the primary session
   try {
     await session(page, corral);
     await expect(
-      page.getByTestId('chat-composer').getByRole('button', { name: 'Model', exact: true }),
+      page.getByTestId('chat-composer').getByRole('button', { name: /^Model(: .+)?$/ }),
     ).toHaveAttribute('aria-description', /^From next request · /);
     await send(page, 'Review and update the chat layout in several steps.');
     const plan = page.getByTestId('composer-work-plan');
