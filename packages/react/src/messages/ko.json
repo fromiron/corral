@@ -2185,7 +2185,7 @@
     "timelineEmpty": "아직 요청이 없습니다. 아래에 첫 요청을 쓰세요.",
     "intentLabel": "보낼 종류",
     "intent": {
-      "next": "다음 요청",
+      "next": "새 요청",
       "queue": "다음 요청 · 지금 실행이 끝난 뒤",
       "steer": "진행 중인 실행에 합류",
       "explain": "결과 질문"
@@ -2211,8 +2211,9 @@
     "send": "보내기",
     "sendHint": "Ctrl+Enter(⌘+Enter)로 보냅니다. Enter는 줄을 바꿉니다.",
     "requestLabel": "요청",
-    "queueHeading": "대기 중인 다음 작업",
+    "queueHeading": "대기 요청",
     "startNow": "지금 시작",
+    "startAfterRun": "실행이 끝나면 시작할 수 있습니다",
     "resendAt": "{time}에 다시 보냄",
     "remove": "지우기",
     "openResults": "결과 보기",
@@ -2227,9 +2228,10 @@
     "rename": "이름 바꾸기",
     "failed": "저장하지 못했습니다: {message}",
     "youAsked": "나 · {intent}",
+    "you": "나",
     "targetChip": "대상: {label} · 다음 모델 요청에 전달",
     "editQueued": "수정",
-    "autoStart": "실행이 끝나면 대기 작업을 자동으로 시작",
+    "autoStart": "실행이 끝나면 다음 대기 요청을 시작",
     "autoStartHint": "실행이 끝나면 이 페이지가 닫혀 있어도 서버가 시작합니다. 서버를 다시 시작한 뒤에는 시작하지 않습니다.",
     "preRun": "{team} · 모델 {profiles} · 파일: {files} · {mode}",
     "filesCopy": "Paddock을 바꿀 수 있음",
@@ -2416,7 +2418,10 @@
       "external_observed": "명령이나 Corral 밖에서 바뀜",
       "mixed": "Corral이 쓴 뒤 명령이나 Corral 밖에서 바뀜"
     },
-    "externalBadge": "외부 변경",
+    "provenanceMark": {
+      "external_observed": "명령·외부",
+      "mixed": "Corral이 쓴 뒤 바뀜"
+    },
     "outsideRuns": "실행 밖",
     "compareRun": "이 실행만 비교",
     "compareRunNamed": "{run}만 비교",
@@ -2536,6 +2541,8 @@
     "run": "실행",
     "folderReadFailed": "프로젝트 폴더 연결을 읽지 못했습니다: {message}",
     "copyReadFailed": "이 대화의 Paddock을 읽지 못했습니다: {message}",
+    "gitReadFailed": "Git 상태를 읽지 못했습니다: {message}",
+    "mergeReadFailed": "부모 대화로의 병합을 읽지 못했습니다: {message}",
     "checksReadFailed": "검사 기록을 읽지 못했습니다: {message}",
     "listReadFailed": "파일 목록을 읽지 못했습니다: {message}"
   },
@@ -2808,7 +2815,7 @@
       "onOnly": "켜짐"
     },
     "destination": {
-      "next": "보낼 대상: 이 대화의 새 실행 · 다음 요청",
+      "next": "보낼 대상: 이 대화의 새 실행 · 새 요청",
       "queue": "보낼 대상: 이 대화의 지금 실행이 끝난 뒤 · 다음 요청",
       "steer": "보낼 대상: 실행 #{number} · {name} · 합류",
       "steerUnavailable": "{name}에 합류 · 현재 전달할 수 없음",
@@ -4375,6 +4382,7 @@
     "measurementMessages": "메시지만 추정",
     "measurementPartial": "부분 측정",
     "measurementPending": "측정 전",
+    "measurementError": "측정 오류",
     "lastRequest": "마지막 요청 {time}",
     "estimatedInput": "추정 입력",
     "tokens": "토큰",
@@ -6117,6 +6125,7 @@
     "statRuns": "실행 {count}회",
     "statSteps": "도구·에이전트 {count}단계",
     "statTokens": "보고된 입출력 토큰 {tokens}",
+    "statTokensUnreported": "토큰 보고 없음",
     "statCache": "캐시 적중 {share}",
     "statCacheUnreported": "캐시 보고 없음",
     "statSession": "대화 누계",

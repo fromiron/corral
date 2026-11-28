@@ -1,6 +1,5 @@
 import { executionPresence, type PresenceKind, usePresenceWord } from '@corral/react';
 import {
-  AgentCard,
   AgentIdentity,
   type AgentStatus,
   AgentStatusLabel,
@@ -46,6 +45,7 @@ import {
   chipClass,
   compactNumber,
   contextLabel,
+  measurementWord,
   RunLink,
 } from './ChatWidgets.tsx';
 import {
@@ -369,8 +369,8 @@ function ContextWidget({ model, open }: { model: ChatWidgetModel; open: () => vo
             }
           />
         ) : (
-          <p aria-hidden="true" className="text-body text-muted-foreground">
-            {summary}
+          <p aria-hidden="true" className="text-caption text-muted-foreground">
+            {measurementWord(context, tw)}
           </p>
         )}
         {meterValue != null && <Meter className="mt-2" value={meterValue} label={summary} />}
@@ -503,7 +503,7 @@ function ResultsWidget({ model }: { model: ChatWidgetModel }) {
   const navigate = useNavigate();
   return (
     <section aria-label={t('results')}>
-      <h3 className="px-3 pt-1 text-caption text-muted-foreground">
+      <h3 className="px-4 pt-1 text-caption text-muted-foreground">
         {t('results')} · {model.results.length}
       </h3>
       <CardGroup orientation="inline">
@@ -525,10 +525,15 @@ function ResultsWidget({ model }: { model: ChatWidgetModel }) {
             }
           >
             <CardMedia icon={FileText} />
-            <CardHeader>
+            <CardHeader className="pr-4">
               {/* An inline title is trimmed to its baseline; unclipped, it keeps its descenders
                   and wraps a long name instead of cutting it (as Needs you does). */}
-              <KitCardTitle className="[&>span]:overflow-visible">{result.label}</KitCardTitle>
+              <KitCardTitle className="[&>span]:overflow-visible">{result.name}</KitCardTitle>
+              {result.madeBy ? (
+                <CardDescription>
+                  <span className="text-caption text-muted-foreground">{result.madeBy}</span>
+                </CardDescription>
+              ) : null}
               <CardAction aria-hidden="true">
                 <ChevronRight size={14} />
               </CardAction>
@@ -559,7 +564,7 @@ function ChangesWidget({ model }: { model: ChatWidgetModel }) {
         }
       >
         <CardMedia icon={FileDiff} />
-        <CardHeader>
+        <CardHeader className="pr-4">
           <KitCardTitle className="[&>span]:overflow-visible">{t('changes')}</KitCardTitle>
           <CardDescription>
             {model.changesLabel === 'error' ? (
@@ -633,35 +638,33 @@ function AgentsWidget({ model, open }: { model: ChatWidgetModel; open: () => voi
   const active = kinds.filter(({ presence }) => !ENDED_KINDS.has(presence.kind));
   const visible = (active.length ? active : kinds).slice(0, 2);
   return (
-    <AgentCard className="grid gap-3 p-3">
-      <Button
-        data-testid="agent-activity-chip"
-        variant="ghost"
-        aria-label={t('openDetail', { name: t('agents') })}
-        onClick={open}
-      >
-        <Bot size={14} aria-hidden="true" />
-        {t('agents')}
-        <ChevronRight size={14} aria-hidden="true" />
-      </Button>
-      {model.live ? (
-        // Each row tells its state by the kit mark and its accessible name only: the
-        // conversation's role row and the activity bar say it in words (presence.md).
-        visible.map(({ row, presence }) => (
-          <AgentIdentity
-            key={row.id}
-            name={row.name}
-            trailing={<PresenceMark presence={presence} name={word(row.status)} />}
-          />
-        ))
-      ) : (
-        <AgentStatusLabel status={summaryStatus} label={tw('agents', model.agents)} />
-      )}
-      {model.live || others.length ? (
-        <p className="text-caption text-muted-foreground">
-          {model.live ? counts : others.join(' · ')}
-        </p>
-      ) : null}
-    </AgentCard>
+    <Card
+      data-testid="agent-activity-chip"
+      label={t('openDetail', { name: t('agents') })}
+      onClick={open}
+    >
+      <Frame icon={Bot} title={t('agents')}>
+        <div className="grid gap-2">
+          {model.live ? (
+            // Each row tells its state by the kit mark and its accessible name only: the
+            // conversation's role row and the activity bar say it in words (presence.md).
+            visible.map(({ row, presence }) => (
+              <AgentIdentity
+                key={row.id}
+                name={row.name}
+                trailing={<PresenceMark presence={presence} name={word(row.status)} />}
+              />
+            ))
+          ) : (
+            <AgentStatusLabel status={summaryStatus} label={tw('agents', model.agents)} />
+          )}
+          {model.live || others.length ? (
+            <p className="text-caption text-muted-foreground">
+              {model.live ? counts : others.join(' · ')}
+            </p>
+          ) : null}
+        </div>
+      </Frame>
+    </Card>
   );
 }

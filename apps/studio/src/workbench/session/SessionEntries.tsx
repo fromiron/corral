@@ -253,7 +253,10 @@ export function EntryCard({
             <ImageAttachmentList sessionId={sessionId} images={otherImages} />
           ) : null}
           <span className="sr-only">
-            {t('youAsked', { intent: t(`intent.${entry.intent}`) })} · {t(`state.${entry.state}`)}
+            {entry.intent === 'next'
+              ? t('you')
+              : t('youAsked', { intent: t(`intent.${entry.intent}`) })}{' '}
+            · {t(`state.${entry.state}`)}
           </span>
         </KitChatMessage>
       </div>

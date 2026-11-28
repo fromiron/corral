@@ -62,6 +62,36 @@ it('names each figure so it needs no definition, and opens nothing', async () =>
   expect(container.textContent).not.toMatch(/Turns are runs|not model calls/);
 });
 
+// Like the cache figure: while no call has reported tokens the line says so, never 0.
+it('says tokens are not reported while no finished call has reported any', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const projection: RunProjection = { ...emptyProjection('live'), status: 'running' };
+  projection.modelCalls.call = {
+    modelCallId: 'call',
+    executionId: 'exec',
+    finished: false,
+    usage: null,
+  } as never;
+  snapshots.set('live', projection);
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ComposerStats runs={[{ runId: 'live', status: 'running' } as RunSummary]} />
+      </IntlProvider>,
+    ),
+  );
+  expect(container.querySelector('[data-testid="composer-stats"]')?.textContent).toBe(
+    'Conversation total · 1 run · 0 tool and agent steps · tokens not reported · cache not reported',
+  );
+});
+
 it('breaks a narrow line between figures, never inside one, and keeps every figure', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');

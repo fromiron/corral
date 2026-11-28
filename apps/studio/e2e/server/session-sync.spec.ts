@@ -77,9 +77,12 @@ test.describe('shared automatic queue', () => {
       await requestBox(page).press('Alt+Enter');
       await second.goto(page.url());
       for (const tab of [page, second]) {
-        await expect(tab.getByRole('button', { name: 'Start now', exact: true })).toBeVisible();
+        await expect(tab.getByRole('region', { name: 'Queued requests' })).toContainText(
+          'Run this queued item once',
+        );
+        await expect(tab.getByRole('button', { name: 'Start now', exact: true })).toHaveCount(0);
         const auto = tab.getByRole('switch', {
-          name: 'Start the next queued task when the run ends',
+          name: 'Start the next queued request when the run ends',
           exact: true,
         });
         await expect(auto).toHaveAttribute('aria-checked', 'true');

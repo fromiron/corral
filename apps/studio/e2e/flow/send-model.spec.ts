@@ -186,7 +186,7 @@ test.describe('sending while a run goes', () => {
       probe = createProbe(page, probeOptions);
       await probe.start('queue-send');
       await box.press('Alt+Enter');
-      await expect(page.getByRole('region', { name: 'Queued next tasks' })).toContainText(
+      await expect(page.getByRole('region', { name: 'Queued requests' })).toContainText(
         'Then write the summary',
       );
       await waitForStill(page);
@@ -207,7 +207,7 @@ test.describe('sending while a run goes', () => {
       await probe.start('run-end-next-start');
       await expect.poll(() => runs().length, { timeout: 30_000 }).toBe(2);
       await expect.poll(() => projection(1)?.status, { timeout: 30_000 }).toBe('succeeded');
-      await expect(page.getByRole('region', { name: 'Queued next tasks' })).toHaveCount(0);
+      await expect(page.getByRole('region', { name: 'Queued requests' })).toHaveCount(0);
       await waitForStill(page);
       expectStill(await probe.stop());
       expect(projection(0)?.status).toBe('succeeded');

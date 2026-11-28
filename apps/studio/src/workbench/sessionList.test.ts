@@ -41,16 +41,31 @@ it('counts runs awaiting the person and terminals to check, across projects', ()
   expect(needsYouCount(sessions, runs, [item('uncertain_terminal', 'done')])).toBe(3);
 });
 
-it('leaves queued requests, unreviewed files and an answered older run out of the badge', () => {
+it('leaves queued requests, unreviewed files and runs that do not wait out of the badge', () => {
   const sessions = [session('answered'), session('quiet')];
   const runs = [
-    // The newest run decides: an older wait that was answered no longer counts.
-    run('answered', 'awaiting_user', '2026-11-01T00:00:00Z'),
+    run('answered', 'succeeded', '2026-11-01T00:00:00Z'),
     run('answered', 'running', '2026-11-02T00:00:00Z'),
     run('quiet', 'paused', '2026-11-01T00:00:00Z'),
   ];
   const attention = [item('queued', 'quiet'), item('unreviewed', 'quiet')];
   expect(needsYouCount(sessions, runs, attention)).toBe(0);
+});
+
+it('counts an older run that still waits although a newer run of its session ended', () => {
+  const runs = [
+    run('asks', 'awaiting_user', '2026-11-01T00:00:00Z'),
+    run('asks', 'succeeded', '2026-11-02T00:00:00Z'),
+  ];
+  expect(needsYouCount([session('asks')], runs, [])).toBe(1);
+});
+
+it('counts each waiting run of a session, not the session once', () => {
+  const runs = [
+    run('asks', 'awaiting_user', '2026-11-01T00:00:00Z'),
+    run('asks', 'awaiting_user', '2026-11-02T00:00:00Z'),
+  ];
+  expect(needsYouCount([session('asks')], runs, [item('uncertain_terminal', 'asks')])).toBe(3);
 });
 
 it('does not count a waiting run whose session the sidebar does not list', () => {

@@ -41,7 +41,20 @@ interface CopyState {
   merge: ParentMerge | null;
   pr: PullRequestView | null;
   setup: PaddockSetup | null;
+  gitFailure: string | null;
+  mergeFailure: string | null;
 }
+
+const NOTHING_READ = {
+  branch: null,
+  merge: null,
+  pr: null,
+  setup: null,
+  gitFailure: null,
+  mergeFailure: null,
+} as const;
+
+const failureText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
 /** Whether the session has a working copy, the branch it is on, and its merge into a parent. */
 function useCopy(
@@ -83,39 +96,50 @@ function useCopy(
       try {
         copy = await workspaces.worktree(sessionId);
       } catch (cause) {
-        return {
-          state: 'failed',
-          failure: cause instanceof Error ? cause.message : String(cause),
-          branch: null,
-          merge: null,
-          pr: null,
-          setup: null,
-        };
+        return { state: 'failed', failure: failureText(cause), ...NOTHING_READ };
       }
-      if (!copy || copy.missing)
-        return { state: 'none', branch: null, merge: null, pr: null, setup: null };
+      if (!copy || copy.missing) return { state: 'none', ...NOTHING_READ };
       const [status, merge, pr] = await Promise.all([
-        workspaces.gitStatus({ kind: 'session', id: sessionId }).catch(() => null),
-        parentSessionId ? workspaces.parentMerge(sessionId).catch(() => null) : null,
+        workspaces.gitStatus({ kind: 'session', id: sessionId }).then(
+          (value) => ({ value, failure: null }),
+          (cause: unknown) => ({ value: null, failure: failureText(cause) }),
+        ),
+        parentSessionId
+          ? workspaces.parentMerge(sessionId).then(
+              (value) => ({ value, failure: null }),
+              (cause: unknown) => ({ value: null, failure: failureText(cause) }),
+            )
+          : { value: null, failure: null },
         (async () => workspaces.pullRequest(sessionId, remote))().catch(
           (): PullRequestView => ({ kind: 'read_failed' }),
         ),
       ]);
+      const head = status.value;
       return {
         state: 'ready',
         branch:
-          status?.target.kind === 'session' && status.target.copyGeneration === copy.copyGeneration
-            ? status.head.branch
+          head?.target.kind === 'session' && head.target.copyGeneration === copy.copyGeneration
+            ? head.head.branch
             : null,
-        merge,
+        merge: merge.value,
         pr,
         setup: copy.setup,
+        gitFailure: status.failure,
+        mergeFailure: merge.failure,
       };
     })().then((copy) => {
       if (!live) return;
       answered = true;
       settingUp.current = copy.setup?.state === 'running';
-      setRead({ sessionId, ...copy });
+      setRead((previous) => {
+        const before = previous?.sessionId === sessionId ? previous : null;
+        return {
+          sessionId,
+          ...copy,
+          branch: copy.gitFailure === null ? copy.branch : (before?.branch ?? null),
+          merge: copy.mergeFailure === null ? copy.merge : (before?.merge ?? null),
+        };
+      });
     });
     return () => {
       live = false;
@@ -125,8 +149,7 @@ function useCopy(
   // Without a workspace service there is nothing to prepare; the sub-views say so themselves.
   const reread = (remote = false) =>
     remote ? setRemoteTick((value) => value + 1) : setTick((value) => value + 1);
-  if (!workspaces)
-    return { state: 'ready', branch: null, merge: null, pr: null, setup: null, reread };
+  if (!workspaces) return { state: 'ready', ...NOTHING_READ, reread };
   return read?.sessionId === sessionId
     ? {
         state: read.state,
@@ -135,9 +158,11 @@ function useCopy(
         merge: read.merge,
         pr: read.pr,
         setup: read.setup,
+        gitFailure: read.gitFailure,
+        mergeFailure: read.mergeFailure,
         reread,
       }
-    : { state: 'unknown', branch: null, merge: null, pr: null, setup: null, reread };
+    : { state: 'unknown', ...NOTHING_READ, reread };
 }
 
 function ChecksView({
@@ -357,6 +382,21 @@ export function SessionChangesPanel({
           </Button>
         </div>
       ) : null}
+      {copy.gitFailure !== null || copy.mergeFailure !== null ? (
+        <div className="flex shrink-0 flex-col items-start gap-2 p-3">
+          <div role="alert" className="flex flex-col gap-1 text-body text-destructive">
+            {copy.gitFailure !== null ? (
+              <p className="m-0">{tf('gitReadFailed', { message: copy.gitFailure })}</p>
+            ) : null}
+            {copy.mergeFailure !== null ? (
+              <p className="m-0">{tf('mergeReadFailed', { message: copy.mergeFailure })}</p>
+            ) : null}
+          </div>
+          <Button variant="tertiary" onClick={readWorkspaceAgain}>
+            {tf('retry')}
+          </Button>
+        </div>
+      ) : null}
       {missing ? (
         // The copy's setup: the shared empty view, laid out as the sub-views lay out theirs.
         <div className="shrink-0 p-3">
@@ -388,13 +428,14 @@ export function SessionChangesPanel({
               sessionId={session.sessionId}
               projectId={session.projectId}
               onRefresh={() => copy.reread(true)}
+              paddockFailureSaid={copy.gitFailure !== null}
               {...(mergeBranch ? { mergeBranch } : {})}
             />
           </div>
         ) : null}
       </TabPanel>
       <TabPanel value="checkpoints" keepMounted className="min-h-0 flex-1 overflow-auto p-3">
-        {visited.has('checkpoints') ? (
+        {visited.has('checkpoints') && !missing ? (
           <CheckpointPanel key={session.sessionId} sessionId={session.sessionId} />
         ) : null}
       </TabPanel>

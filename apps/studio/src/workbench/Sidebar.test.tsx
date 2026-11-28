@@ -8,7 +8,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { shortcutLabel } from '../shortcuts.ts';
-import { Sidebar, sidebarRowHeights } from './Sidebar.tsx';
+import { Sidebar, SidebarDrawer, sidebarRowHeights } from './Sidebar.tsx';
 import { forgetSharedPresenceHolds } from './useSettledPresence.ts';
 
 const fixture = vi.hoisted(() => ({
@@ -1336,3 +1336,27 @@ it.each(['default', 'compact'] as const)(
     }
   },
 );
+
+it('names the narrow drawer as the navigation region, not as the command that opens it', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <DesignKitProvider>
+          <SidebarProvider persist={false} shortcut={null} mobileBreakpoint={0}>
+            <SidebarDrawer model={model} open onOpenChange={() => {}} />
+          </SidebarProvider>
+        </DesignKitProvider>
+      </IntlProvider>,
+    ),
+  );
+  const drawer = document.querySelector('[role="dialog"]');
+  const title = document.getElementById(drawer?.getAttribute('aria-labelledby') ?? '');
+  expect(title?.textContent).toBe(messages.Shell.title);
+});

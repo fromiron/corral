@@ -573,6 +573,32 @@ it('opens the branch section when the address names a branch to merge, and not o
 });
 
 // features/sub-sessions.md: Refresh in the Git view also re-reads the Changes header.
+it('does not repeat a failed Paddock read its host already says, and says the original’s own', async () => {
+  sessionStorage.clear();
+  documents.value = {};
+  const gitStatus = vi.fn(async (_scope: { kind: string; id: string }): Promise<GitStatus> => {
+    throw new ApiError(503, 'UNKNOWN', 'the Git request failed');
+  });
+  const f = await mount({ gitStatus });
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(f.container.querySelector('[role="alert"]')?.textContent).toBe('Git.unavailable');
+  await act(async () =>
+    f.root.render(<GitPanel sessionId="session" projectId="project" paddockFailureSaid />),
+  );
+  expect(f.container.querySelector('[role="alert"]')).toBeNull();
+  await act(async () => f.container.querySelector<HTMLButtonElement>('[role=combobox]')?.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role=option]')].find(
+    (item) => item.textContent === 'Git.projectSource',
+  );
+  await act(async () => option?.focus());
+  await act(async () =>
+    option?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+  );
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(gitStatus.mock.calls.at(-1)?.[0]).toEqual({ kind: 'project', id: 'project' });
+  expect(f.container.querySelector('[role="alert"]')?.textContent).toBe('Git.unavailable');
+});
+
 it('tells its host when the person refreshes', async () => {
   sessionStorage.clear();
   documents.value = {};

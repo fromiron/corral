@@ -123,12 +123,12 @@ it('lists a partial result the run no longer keeps as a row that cannot be opene
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <ArtifactsPanel runs={runs} onOpen={onOpen} />
+        <ArtifactsPanel runs={runs} onOpen={onOpen} onOpenRun={() => {}} />
       </IntlProvider>,
     ),
   );
   await act(async () => {});
-  const rows = [...container.querySelectorAll('ul[aria-label] > li')];
+  const rows = [...container.querySelectorAll('section[aria-label] li')];
   expect(rows.map((row) => row.textContent)).toEqual([
     expect.stringContaining('notes v1'),
     expect.stringContaining('draft v1'),
@@ -216,6 +216,186 @@ const stateWord = (run: RunSummary) =>
   messages.Presence.state[
     listedRunPresence(run).labelKey.split('.')[1] as keyof typeof messages.Presence.state
   ];
+
+const results = async (
+  byRun: Record<string, RunProjection>,
+  runs: RunSummary[],
+  nodes: { id: string; label: string }[] = [],
+) => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  fixture.services = {
+    transport: {
+      getSnapshot: async (runId: string) => ({ projection: byRun[runId] }),
+      getRunDefinition: async () => ({ nodes }),
+    },
+  };
+  const onOpen = vi.fn();
+  const onOpenRun = vi.fn();
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ArtifactsPanel runs={runs} onOpen={onOpen} onOpenRun={onOpenRun} />
+      </IntlProvider>,
+    ),
+  );
+  await act(async () => {});
+  return { container, onOpen, onOpenRun };
+};
+
+it('opens a run from its group heading, the way to a run whose results are no longer kept', async () => {
+  const released: RunProjection = {
+    ...emptyProjection('run_1'),
+    status: 'succeeded',
+    artifacts: { old: { ...version('old', 'draft'), bodyAvailable: false } },
+    output: { nodeId: 'write', artifactVersionIds: ['old'] },
+  };
+  const { container, onOpen, onOpenRun } = await results({ run_1: released }, [
+    { runId: 'run_1', status: 'succeeded' } as RunSummary,
+  ]);
+  const group = container.querySelector('section[aria-label="Run #1"]');
+  expect(group?.querySelector('li button')).toBeNull();
+  const heading = group?.querySelector<HTMLButtonElement>('h2 button');
+  expect(heading?.textContent).toBe('Run #1');
+  await act(async () => heading?.click());
+  expect(onOpenRun).toHaveBeenCalledWith('run_1');
+  expect(onOpen).not.toHaveBeenCalled();
+});
+
+it('does not offer to open a final result an earlier run no longer keeps', async () => {
+  // A later run of the session succeeded, so the earlier run's final text was released
+  // (api-contract.md, 산출물 본문 수명).
+  const earlier: RunProjection = {
+    ...emptyProjection('run_1'),
+    status: 'succeeded',
+    artifacts: { old: { ...version('old', 'draft'), bodyAvailable: false } },
+    output: { nodeId: 'write', artifactVersionIds: ['old'] },
+  };
+  const later: RunProjection = {
+    ...emptyProjection('run_2'),
+    status: 'succeeded',
+    artifacts: { now: version('now', 'draft') },
+    output: { nodeId: 'write', artifactVersionIds: ['now'] },
+  };
+  const { container, onOpen } = await results({ run_1: earlier, run_2: later }, [
+    { runId: 'run_1', status: 'succeeded' } as RunSummary,
+    { runId: 'run_2', status: 'succeeded' } as RunSummary,
+  ]);
+  const rows = [...container.querySelectorAll('li')];
+  expect(rows).toHaveLength(2);
+  const [current, released] = rows;
+  expect(current?.querySelector('button')).not.toBeNull();
+  expect(current?.textContent).not.toContain('Text no longer kept');
+  expect(released?.querySelector('button')).toBeNull();
+  expect(released?.textContent).toContain('Text no longer kept');
+  expect(onOpen).not.toHaveBeenCalled();
+});
+
+it('groups results by run and keeps who made each and that its text is gone from being cut', async () => {
+  const nodes = [
+    { id: 'write', label: 'Assistant' },
+    { id: 'inv', label: 'Cause investigation' },
+  ];
+  const by = (id: string, artifactId: string, executionId: string, kept: boolean) => ({
+    ...version(id, artifactId),
+    authorExecutionId: executionId,
+    ...(kept ? {} : { bodyAvailable: false }),
+  });
+  const run = (
+    runId: string,
+    artifacts: RunProjection['artifacts'],
+    final: string,
+    carried: string[],
+  ) =>
+    ({
+      ...emptyProjection(runId),
+      status: 'succeeded',
+      artifacts,
+      executions: {
+        exec_a: { nodeId: 'write' },
+        exec_b: { nodeId: 'inv' },
+        exec_c: { nodeId: 'inv' },
+      },
+      executionOrder: ['exec_a', 'exec_b', 'exec_c'],
+      output: { nodeId: 'write', artifactVersionIds: [final] },
+      forkedFrom: carried.length
+        ? {
+            runId: 'run_0',
+            nodeId: 'write',
+            carried: [{ nodeId: 'inv', artifactVersionIds: carried }],
+          }
+        : null,
+    }) as unknown as RunProjection;
+  const { container } = await results(
+    {
+      run_1: run(
+        'run_1',
+        {
+          d1: by('d1', 'draft', 'exec_a', false),
+          n1: by('n1', 'notes', 'exec_b', false),
+          n2: by('n2', 'findings', 'exec_c', false),
+        },
+        'd1',
+        [],
+      ),
+      run_2: run(
+        'run_2',
+        {
+          d2: by('d2', 'draft', 'exec_a', true),
+          m1: by('m1', 'notes', 'exec_b', false),
+          m2: by('m2', 'findings', 'exec_c', true),
+        },
+        'd2',
+        ['m2'],
+      ),
+    },
+    [
+      { runId: 'run_1', status: 'succeeded' } as RunSummary,
+      { runId: 'run_2', status: 'succeeded' } as RunSummary,
+    ],
+    nodes,
+  );
+  // One group a run, newest first, each named once by its heading.
+  const groups = [...container.querySelectorAll('section[aria-label]')];
+  expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual(['Run #2', 'Run #1']);
+  expect(groups.map((group) => group.querySelector('h2')?.textContent)).toEqual([
+    'Run #2',
+    'Run #1',
+  ]);
+  const rows = groups.map((group) => [...group.querySelectorAll('li')]);
+  // The row does not repeat the run its group names.
+  for (const row of rows.flat()) expect(row.textContent).not.toContain('Run #');
+  // Every row of a run reads differently, the released ones too.
+  for (const list of rows) {
+    const texts = list.map((row) => row.textContent);
+    expect(new Set(texts).size).toBe(texts.length);
+  }
+  const released = rows[1]?.find((row) => row.textContent?.includes('notes v1'));
+  expect(released?.querySelector('button')).toBeNull();
+  // Who made it comes first; the role may shorten but its execution number never does.
+  expect(released?.textContent).toContain('Cause investigation');
+  const number = [...(released?.querySelectorAll('span') ?? [])].find(
+    (span) => span.textContent?.trim().endsWith('execution 2') && !span.querySelector('span'),
+  );
+  expect(number?.className).toContain('shrink-0');
+  // That the text is gone stands at the row's end, where the kind of an open one stands.
+  const end = (row: Element | null | undefined) =>
+    [...(row?.querySelectorAll('span') ?? [])].at(-1);
+  expect(end(released)?.textContent).toBe('Text no longer kept');
+  expect(end(released)?.className).toContain('shrink-0');
+  const open = rows[0]?.[0]?.querySelector('button');
+  expect(end(open)?.textContent).toBe('Final results');
+  expect(end(open)?.className).toContain('shrink-0');
+  expect(open?.getAttribute('aria-label')).toBe(
+    'Final results draft v1 · Run #2 · Assistant · execution 1',
+  );
+});
 
 it('tells above a past run that another run of the session goes, by its number and state', async () => {
   const view = await showRunPanel([past, going], going, { panel: 'run', run: 'run_past' });

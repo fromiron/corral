@@ -324,6 +324,22 @@ it('marks the whole copy read from the more menu and tells the open views', asyn
   expect(changed).toHaveBeenCalledTimes(1);
 });
 
+it('shows only the setup on Checkpoints while there is no Paddock, and keeps the sub-views and the Git view', async () => {
+  (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => null);
+  const view = await mount();
+  const checkpointForm = () => view.container.querySelector('input[aria-label="checkpoint name"]');
+  await view.choose('Checkpoints.tab');
+  expect(view.selected()).toBe('Checkpoints.tab');
+  expect(view.container.textContent).toContain('copy preparation');
+  expect(checkpointForm()).toBeNull();
+  expect(view.tabs()).toHaveLength(4);
+  await view.choose('Git.title');
+  expect(view.container.querySelector('input[aria-label="commit message"]')).not.toBeNull();
+  await view.choose('Checks.title');
+  expect(view.container.textContent).toContain('check records');
+  expect(checkpointForm()).toBeNull();
+});
+
 it('shows the working copy setup once, whichever sub-view is open, while there is no copy', async () => {
   (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => null);
   const view = await mount();

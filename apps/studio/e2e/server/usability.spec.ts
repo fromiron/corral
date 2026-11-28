@@ -359,15 +359,18 @@ test('UX-015-04 older results remain reachable after ten runs', async ({ page, c
       timeline(page).getByRole('region', { name: `Run #${index + 1}`, exact: true }),
     ).toContainText('Completed');
     await expect(request(page)).toHaveAccessibleDescription(
-      'Send to: new run in this conversation · next request',
+      'Send to: new run in this conversation · new request',
     );
   }
   const panel = await openResultsList(page);
-  const firstResult = panel.getByRole('button', { name: / · Run #1 · / }).first();
-  await expect(firstResult).toHaveCount(0);
+  const first = panel.getByRole('region', { name: 'Run #1', exact: true });
+  await expect(first).toHaveCount(0);
   await panel.getByRole('button', { name: 'Show 1 earlier runs' }).click();
-  await expect(firstResult).toBeVisible();
-  await firstResult.click();
+  // Later runs released Run #1's text (api-contract.md 산출물 본문 수명): its rows open nothing, and
+  // the group's heading is the way to the run (features/session-panel.md).
+  await expect(first).toContainText('Text no longer kept');
+  await expect(first.getByRole('listitem').getByRole('button')).toHaveCount(0);
+  await first.getByRole('button', { name: 'Run #1', exact: true }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(firstRun);
 });
 

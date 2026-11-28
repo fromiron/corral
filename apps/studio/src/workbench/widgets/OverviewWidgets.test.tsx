@@ -97,7 +97,14 @@ function model(patch: Partial<ChatWidgetModel> = {}): ChatWidgetModel {
     changeDeletions: 1027,
     agents: null,
     tools: [],
-    results: [{ id: 'artv_1', label: 'draft v1' }],
+    results: [
+      {
+        id: 'artv_1',
+        label: 'draft v1 · Writer · execution 2',
+        name: 'draft v1',
+        madeBy: 'Writer · execution 2',
+      },
+    ],
     environment: null,
     usage: usageSummary(projection),
     cost: null,
@@ -163,9 +170,16 @@ it('shows the run in kit widgets whose details open in place', async () => {
   expect(changes?.textContent).toContain('+2,589');
   expect(changes?.textContent).toContain('−1,027');
   const resultButton = container.querySelector<HTMLButtonElement>(
-    '[data-overview-widget="results"] button[aria-label="draft v1"]',
+    '[data-overview-widget="results"] button[aria-label="draft v1 · Writer · execution 2"]',
   );
   expect(resultButton).not.toBeNull();
+  // A result row reads as the changes row does: what it is, then a line about it.
+  const resultRow = resultButton?.closest('[data-slot="card"]');
+  expect(resultRow?.querySelector('[data-slot="card-title"]')?.textContent).toContain('draft v1');
+  expect(resultRow?.querySelector('[data-slot="card-title"]')?.textContent).not.toContain('Writer');
+  expect(resultRow?.querySelector('[data-slot="card-description"]')?.textContent).toBe(
+    'Writer · execution 2',
+  );
   await act(async () => resultButton?.click());
   expect(navigate).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -416,6 +430,88 @@ it('does not present a partial or unmeasured context as a full-window meter', as
   expect(container.querySelector('[data-overview-widget="context"]')?.textContent).not.toContain(
     '0%',
   );
+});
+
+// The title names the context; the line under it says only the state (workbench.md, a name once).
+it('under the Context title an unmeasured state is said without the name again', async () => {
+  const base = model();
+  const unmeasured = {
+    ...base.context,
+    tokens: null,
+    percent: null,
+    barPercent: null,
+    freeTokens: null,
+    windowTokens: null,
+    parts: [],
+    coverage: null,
+    measurementStage: null,
+  };
+  for (const [patch, state, summary] of [
+    [{ kind: 'empty', completeness: 'unmeasured' }, 'Not measured', 'Context · awaiting request'],
+    [{ kind: 'partial', completeness: 'partial' }, 'Partial measurement', 'Partial context'],
+    [{ kind: 'empty', completeness: 'error' }, 'Measurement error', 'Context needs attention'],
+  ] as const) {
+    const container = await render(
+      model({ context: { ...unmeasured, ...patch } } as Partial<ChatWidgetModel>),
+    );
+    const card = container.querySelector('[data-overview-widget="context"]');
+    expect(visible(card?.querySelector('[data-slot="card-content"]'))).toBe(state);
+    // Assistive tech still gets the whole summary, as the tooltip and the pill's name do.
+    expect(card?.querySelector('.sr-only')?.textContent).toBe(summary);
+  }
+});
+
+// The card and the detail it opens say the same word for the same state.
+it('the context detail names a failed measurement as its card does', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      context: {
+        ...base.context,
+        kind: 'empty',
+        tokens: null,
+        percent: null,
+        barPercent: null,
+        freeTokens: null,
+        windowTokens: null,
+        parts: [],
+        coverage: null,
+        completeness: 'error',
+        measurementStage: null,
+      },
+    } as Partial<ChatWidgetModel>),
+  );
+  await act(async () => openButton(container, 'Context')?.click());
+  const detail = container.querySelector('[data-testid="context-inspector"]');
+  expect(visible(detail)).toContain('Measurement error');
+  expect(visible(detail)).not.toContain('Not measured');
+});
+
+// Agents, Context and Usage each open a detail in place, so their heads are one shape.
+it('heads every summary that opens a detail the same way', async () => {
+  const container = await render(
+    model({
+      chips: ['agents', 'context'],
+      agents: { total: 2, working: 0, waiting: 0, failed: 0 },
+      agentRows: [{ id: 'reviewer', name: 'Reviewer', status: 'succeeded' }],
+    }),
+  );
+  for (const [widget, name] of [
+    ['agents', 'Agents'],
+    ['context', 'Context'],
+    ['usage', 'Usage'],
+  ] as const) {
+    const card = container.querySelector(`[data-overview-widget="${widget}"] [data-slot="card"]`);
+    const head = card?.querySelector('[data-slot="card-header"]');
+    expect(head?.querySelector('[data-slot="card-title"]')?.textContent).toContain(name);
+    expect(head?.querySelector('[data-slot="card-title"] svg')).not.toBeNull();
+    expect(head?.querySelector('[data-slot="card-action"] svg')).not.toBeNull();
+    expect(openButton(card as Element, name)).not.toBeNull();
+  }
+  // The agents summary keeps its handle for the detail.
+  expect(
+    container.querySelector('[data-overview-widget="agents"] [data-testid="agent-activity-chip"]'),
+  ).not.toBeNull();
 });
 
 it('states an estimate without a percentage once: the tokens, then the window as its unit', async () => {

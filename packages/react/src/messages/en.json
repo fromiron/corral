@@ -2185,7 +2185,7 @@
     "timelineEmpty": "Nothing asked yet. Write the first request below.",
     "intentLabel": "What this is",
     "intent": {
-      "next": "Next request",
+      "next": "New request",
       "queue": "Next request, after the current run",
       "steer": "Join the running run",
       "explain": "Question about the result"
@@ -2211,8 +2211,9 @@
     "send": "Send",
     "sendHint": "Ctrl+Enter (⌘+Enter) sends. Enter adds a line.",
     "requestLabel": "Request",
-    "queueHeading": "Queued next tasks",
+    "queueHeading": "Queued requests",
     "startNow": "Start now",
+    "startAfterRun": "You can start it when the run ends",
     "resendAt": "Resends at {time}",
     "remove": "Remove",
     "openResults": "Open results",
@@ -2227,9 +2228,10 @@
     "rename": "Rename",
     "failed": "Could not save: {message}",
     "youAsked": "You · {intent}",
+    "you": "You",
     "targetChip": "To {label} · at its next model request",
     "editQueued": "Edit",
-    "autoStart": "Start the next queued task when the run ends",
+    "autoStart": "Start the next queued request when the run ends",
     "autoStartHint": "The server starts it when the run ends, even with this page closed; never after a restart.",
     "preRun": "{team} · models {profiles} · files: {files} · {mode}",
     "filesCopy": "can change the Paddock",
@@ -2416,7 +2418,10 @@
       "external_observed": "Changed by a command or outside Corral",
       "mixed": "Written by Corral, then changed by a command or outside Corral"
     },
-    "externalBadge": "External",
+    "provenanceMark": {
+      "external_observed": "Command or outside",
+      "mixed": "Changed after Corral"
+    },
     "outsideRuns": "Outside runs",
     "compareRun": "Compare this run only",
     "compareRunNamed": "Compare {run} only",
@@ -2536,6 +2541,8 @@
     "run": "Run",
     "folderReadFailed": "The project folder link could not be read: {message}",
     "copyReadFailed": "This conversation’s Paddock could not be read: {message}",
+    "gitReadFailed": "Could not read the Git state: {message}",
+    "mergeReadFailed": "Could not read the merge into the parent conversation: {message}",
     "checksReadFailed": "The check records could not be read: {message}",
     "listReadFailed": "The file list could not be read: {message}"
   },
@@ -2808,7 +2815,7 @@
       "onOnly": "On"
     },
     "destination": {
-      "next": "Send to: new run in this conversation · next request",
+      "next": "Send to: new run in this conversation · new request",
       "queue": "Send to: after the current run in this conversation · next request",
       "steer": "Send to: Run #{number} · {name} · Join",
       "steerUnavailable": "Join {name} · target unavailable",
@@ -4375,6 +4382,7 @@
     "measurementMessages": "Messages only",
     "measurementPartial": "Partial measurement",
     "measurementPending": "Not measured",
+    "measurementError": "Measurement error",
     "lastRequest": "Last request {time}",
     "estimatedInput": "Estimated input",
     "tokens": "tokens",
@@ -6117,6 +6125,7 @@
     "statRuns": "{count, plural, one {# run} other {# runs}}",
     "statSteps": "{count, plural, one {# tool or agent step} other {# tool and agent steps}}",
     "statTokens": "{tokens} reported in/out tokens",
+    "statTokensUnreported": "tokens not reported",
     "statCache": "cache hit {share}",
     "statCacheUnreported": "cache not reported",
     "statSession": "Conversation total",

@@ -98,6 +98,20 @@ it('sets a name that is no longer kept as the other names are, its note as a sec
   expect(note?.textContent).toBe(messages.RunMonitor.resultVersions.notKept);
 });
 
+// A narrow panel wraps who made a version between its parts; it never cuts the execution off,
+// and the version column never breaks its word (features/execution-monitor.md).
+it('wraps who made a version between its parts and keeps the version on one line', async () => {
+  const container = await render();
+  const cell = row(container, 'v_part1').cells[1];
+  expect(cell?.classList.contains('truncate')).toBe(false);
+  const parts = [...(cell?.querySelectorAll('span') ?? [])];
+  expect(parts.map((part) => part.textContent)).toEqual(['Helper ·', 'execution 2 ·', 'Attempt 1']);
+  for (const part of parts) expect(part.classList.contains('inline-block')).toBe(true);
+  const head = container.querySelector('thead')?.rows[0]?.cells[2];
+  expect(head?.classList.contains('whitespace-nowrap')).toBe(true);
+  expect(row(container, 'v_part1').cells[2]?.classList.contains('whitespace-nowrap')).toBe(true);
+});
+
 // Settings › General › Interface density reaches the run history (workbench.md).
 it('result rows take the interface density', async () => {
   const name = (container: HTMLElement) =>
