@@ -2294,7 +2294,7 @@
     "agentNoFiles": "에이전트는 파일을 읽거나 바꿀 수 없습니다.",
     "agentFolderMissing": "원본 폴더를 찾을 수 없습니다.",
     "checkFolder": "원본 폴더 확인",
-    "agentDirect": "이 폴더를 읽을 수 있습니다. 파일 도구로는 바꾸지 않습니다.",
+    "agentDirect": "원본 폴더를 읽을 수 있습니다. 파일 도구로는 바꾸지 않습니다.",
     "agentCopy": "이 대화의 Paddock을 읽고 바꿀 수 있습니다.",
     "retryRequest": "같은 요청 다시 보내기",
     "restoreRequest": "메시지 되돌리기",

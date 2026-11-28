@@ -125,4 +125,5 @@ Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 �
   - Instructions: 역할의 프롬프트, 실행 단위에 보내는 지시, 프로젝트 지침.
   - `Docking.conversation`과 `Docking.chat`은 같은 값을 가진 두 키다.
   - 저장하지 않고 쓰는 자동 구성: 컴포저는 "Auto / 자동", 새 대화 만들기와 대화 메뉴는 "Default chat / 기본 대화"라고 부른다.
+  - 프로젝트 원본 폴더: 영문의 반영 문구(`Review.integrateHeading`, `Review.integrateNote`, `Hunks.planOriginal`, `Hunks.applyOriginal`)는 아직 꾸미는 말 없이 "the folder"라고 쓴다. 같은 자리의 국문은 "원본 폴더"다.
 - 실행 상태의 낱말은 [표시 상태](features/presence.md)의 것 하나로 쓰지만, 문구 키는 `Presence`·`RunStatus`·`Status`·`RunPage`·`RunReasons`·`Events` 네임스페이스에 나뉘어 있다. 낱말을 바꿀 때는 이 여러 곳을 함께 고친다.

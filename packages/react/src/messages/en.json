@@ -2294,7 +2294,7 @@
     "agentNoFiles": "The agent cannot read or change files.",
     "agentFolderMissing": "The source folder is unavailable.",
     "checkFolder": "Check the source folder",
-    "agentDirect": "The agent can read this folder. File tools do not change it.",
+    "agentDirect": "The agent can read the source folder. File tools do not change it.",
     "agentCopy": "The agent can read and change this conversation's Paddock.",
     "retryRequest": "Retry request",
     "restoreRequest": "Restore message",
