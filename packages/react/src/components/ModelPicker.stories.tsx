@@ -119,7 +119,7 @@ export const KeyboardAndContainment: Story = {
   play: async ({ canvasElement, args, userEvent }) => {
     const canvas = within(canvasElement);
     const page = within(canvasElement.ownerDocument.body);
-    const trigger = canvas.getByRole('button', { name: 'Model' });
+    const trigger = canvas.getByRole('button', { name: /^Model(: .+)?$/ });
     trigger.focus();
     await userEvent.keyboard('{Enter}');
     const dialog = await page.findByRole('dialog', { name: 'Model settings' });
@@ -190,7 +190,7 @@ export const LongNameNarrow: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const trigger = canvas.getByRole('button', { name: 'Model' });
+    const trigger = canvas.getByRole('button', { name: /^Model(: .+)?$/ });
     const box = canvas.getByTestId('composer-scroll').getBoundingClientRect();
     expect(clippedWords(trigger)).toEqual([]);
     const bounds = trigger.getBoundingClientRect();
@@ -232,7 +232,7 @@ export const LongNameSingleToolbar: Story = {
     // The one-line tool line starts at the `sm` width.
     expect(window.matchMedia('(min-width: 40rem)').matches).toBe(true);
     const canvas = within(canvasElement);
-    const trigger = canvas.getByRole('button', { name: 'Model' });
+    const trigger = canvas.getByRole('button', { name: /^Model(: .+)?$/ });
     const sibling = canvas.getByTestId('sibling-chip').getBoundingClientRect();
     const box = canvas.getByTestId('composer-scroll').getBoundingClientRect();
     const bounds = trigger.getBoundingClientRect();
