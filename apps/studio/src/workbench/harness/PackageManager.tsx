@@ -18,7 +18,7 @@ import {
 } from '@corral/react/design-kit';
 import { Plus, Trash2 } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { type Ref, useEffect, useId, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsNavigation } from '../navigation.ts';
 import { useSettingsCommand, useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
@@ -59,6 +59,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
   const alive = useRef(true);
   const working = useRef(false);
   const add = useRef<HTMLButtonElement>(null);
+  const backToSource = useRef(false);
   // Manage on a package row in the library (features/library.md): packages have no list to
   // choose from, so the page goes to that package's line and puts focus there, once.
   const [carried] = useState(navigation.item);
@@ -124,6 +125,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
     setPreviousHash('');
     setKind('local');
     setAdding(false);
+    add.current?.focus();
   }
   async function closeAdding(event?: Event) {
     if (event instanceof KeyboardEvent && (event.isComposing || event.keyCode === 229)) return;
@@ -208,7 +210,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
               item={item}
               busy={busy}
               projectChosen={Boolean(navigation.projectId)}
-              toggle={carried === item.resource.hash ? carriedRow : undefined}
+              carried={carried === item.resource.hash ? carriedRow : undefined}
               onTrust={(trusted) =>
                 void work(async () => {
                   await api.trust(item.resource.hash, trusted);
@@ -299,6 +301,11 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                         {t('source')}
                         <Input
                           id={sourceId}
+                          ref={(field) => {
+                            if (!field || !backToSource.current) return;
+                            backToSource.current = false;
+                            field.focus();
+                          }}
                           value={source}
                           onChange={(event) => setSource(event.target.value)}
                           required
@@ -343,6 +350,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                         void work(async () => {
                           await api.cancelReview(review.reviewId);
                           reviewId.current = null;
+                          backToSource.current = true;
                           if (alive.current) setReview(null);
                         })
                       }
@@ -386,7 +394,7 @@ function PackageRow({
   item,
   busy,
   projectChosen,
-  toggle,
+  carried,
   onTrust,
   onManage,
   onRemove,
@@ -395,7 +403,7 @@ function PackageRow({
   item: PackageView;
   busy: boolean;
   projectChosen: boolean;
-  toggle: Ref<HTMLButtonElement> | undefined;
+  carried: RefObject<HTMLButtonElement | null> | undefined;
   onTrust: (trusted: boolean) => void;
   onManage: (status: 'enabled' | 'disabled') => void;
   onRemove: () => void;
@@ -405,6 +413,13 @@ function PackageRow({
   const h = useTranslations('Harness');
   const resourcesText = useTranslations('Resources');
   const [open, setOpen] = useState(false);
+  const row = useRef<HTMLButtonElement | null>(null);
+  const keepingFocusOnRow = <T,>(act: (value: T) => void) => {
+    return (value: T) => {
+      row.current?.focus();
+      act(value);
+    };
+  };
   const id = useId();
   const name = `${id}name`;
   const version = `${id}version`;
@@ -418,7 +433,10 @@ function PackageRow({
     <li className="@container">
       <div className="relative grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-2 transition-colors duration-(--duration-fast) has-[>button:hover]:bg-hover motion-reduce:transition-none @md:grid-cols-[minmax(0,1fr)_auto_auto]">
         <button
-          ref={toggle}
+          ref={(button) => {
+            row.current = button;
+            if (carried) carried.current = button;
+          }}
           type="button"
           aria-expanded={open}
           aria-controls={details}
@@ -457,7 +475,9 @@ function PackageRow({
             className="relative col-start-1 row-start-2 justify-self-start @md:col-start-2 @md:row-start-1"
             aria-describedby={name}
             disabled={busy}
-            onClick={() => (removed ? onManage('disabled') : onTrust(true))}
+            onClick={() =>
+              removed ? keepingFocusOnRow(onManage)('disabled') : keepingFocusOnRow(onTrust)(true)
+            }
           >
             {removed ? resourcesText('restore') : h('trust')}
           </Button>
@@ -501,7 +521,7 @@ function PackageRow({
                   variant="tertiary"
                   size="compact"
                   disabled={busy}
-                  onClick={() => onTrust(false)}
+                  onClick={() => keepingFocusOnRow(onTrust)(false)}
                 >
                   {h('revoke')}
                 </Button>
@@ -511,7 +531,7 @@ function PackageRow({
                 size="compact"
                 className="ml-auto"
                 disabled={busy}
-                onClick={onRemove}
+                onClick={keepingFocusOnRow(onRemove)}
               >
                 <Trash2 aria-hidden />
                 {t('remove')}
@@ -527,7 +547,12 @@ function PackageRow({
 function ReviewedCopy({ review }: { review: PackageReview }) {
   const t = useTranslations('Packages');
   return (
-    <section className="flex flex-col gap-3" aria-label={t('reviewed')}>
+    <section
+      ref={(reviewed) => reviewed?.focus()}
+      tabIndex={-1}
+      className="flex flex-col gap-3 outline-none"
+      aria-label={t('reviewed')}
+    >
       <h3 style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('reviewed')} · {review.resource.name} · {review.resource.version}
       </h3>

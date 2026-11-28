@@ -239,6 +239,12 @@ it('keeps the other actions at the end of the opened details, removal last, with
   expect(reachable(itemOf(container, 'gone'))).toEqual([r.restore]);
   await click(button(itemOf(container, 'usual') as Element, h.revoke));
   expect(api.trust).toHaveBeenCalledWith('hash_1', false);
+  // An action that goes away once done leaves the keyboard on its row.
+  expect(document.activeElement).toBe(toggleOf(itemOf(container, 'usual')));
+  await click(button(itemOf(container, 'unknown') as Element, h.trust));
+  expect(document.activeElement).toBe(toggleOf(itemOf(container, 'unknown')));
+  await click(button(itemOf(container, 'gone') as Element, r.restore));
+  expect(document.activeElement).toBe(toggleOf(itemOf(container, 'gone')));
   await click(itemOf(container, 'usual')?.querySelector('[role="switch"]'));
   expect(api.managePackage).toHaveBeenCalledWith('hash_1', 1, 'disabled', expect.any(String));
   await click(button(itemOf(container, 'usual') as Element, p.remove));
@@ -250,9 +256,12 @@ it('shows the reviewed copy in the same dialog and closes it once installed', as
   expect(api.reviewPackage).toHaveBeenCalledWith('local', '/work/fresh-pack', undefined);
   expect(dialog()?.textContent).toContain(`${messages.Packages.reviewed} · fresh-pack · 1.0.0`);
   expect(container.textContent).not.toContain(messages.Packages.reviewed);
+  // The keyboard lands on what was reviewed, not on the button that installs it.
+  expect(document.activeElement?.getAttribute('aria-label')).toBe(messages.Packages.reviewed);
   await click(button(dialog() as HTMLElement, messages.Packages.install));
   expect(api.install).toHaveBeenCalledWith('review_1');
   expect(dialog()).toBeNull();
+  expect(document.activeElement).toBe(button(container, messages.Packages.add));
   expect(api.cancelReview).not.toHaveBeenCalled();
   expect(api.packages).toHaveBeenCalledTimes(2);
 });
@@ -267,6 +276,7 @@ it('asks before closing the dialog over a review, and cancels that review when t
   await click(button(dialog() as HTMLElement, messages.Resources.cancel));
   expect(dialog()).toBeNull();
   expect(api.cancelReview).toHaveBeenCalledWith('review_1');
+  expect(document.activeElement).toBe(button(document.body, messages.Packages.add));
   // Nothing of the abandoned review comes back with the next one.
   await click(button(document.body, messages.Packages.add));
   expect(sourceField().value).toBe('');
@@ -283,4 +293,12 @@ it('says a refused review inside the dialog and a refused row action under the l
   await click(toggleOf(itemOf(container, 'lint-pack')));
   await click(button(itemOf(container, 'lint-pack') as Element, messages.Harness.revoke));
   expect(container.querySelector('[role="alert"]')?.textContent).toBe('The package changed.');
+});
+
+it('goes back to the source field when the person changes the source of a review', async () => {
+  await review();
+  await click(button(dialog() as HTMLElement, messages.Packages.changeSource));
+  expect(api.cancelReview).toHaveBeenCalledWith('review_1');
+  expect(sourceField().value).toBe('/work/fresh-pack');
+  expect(document.activeElement).toBe(sourceField());
 });

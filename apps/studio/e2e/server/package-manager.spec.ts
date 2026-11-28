@@ -91,8 +91,30 @@ test('reviewed packages install trusted, preserve plain text metadata, and keep 
   await expect(review).toContainText('read_file');
   await expect(review.getByText('<img src=x onerror=alert(1)>', { exact: true })).toBeVisible();
   await expect(review.locator('img')).toHaveCount(0);
+  // Escape over a review asks first; staying keeps the review, leaving cancels it on the server.
+  const guard = page.getByRole('dialog', { name: 'Unsaved settings', exact: true });
+  const add = packages.getByRole('button', { name: 'Add package', exact: true });
+  await expect(review).toBeFocused();
+  await page.keyboard.press('Escape');
+  await guard.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(review).toContainText('reviewed-ui-fixture');
+  const cancelled = page.waitForRequest(
+    (request) => request.method() === 'DELETE' && request.url().includes('/harness/reviews/'),
+  );
+  await page.keyboard.press('Escape');
+  await guard.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  await cancelled;
+  await expect(adding).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(add).toBeFocused();
+  await add.click();
+  await expect(adding.getByLabel('Package source', { exact: true })).toHaveValue('');
+  await adding.getByLabel('Package source', { exact: true }).fill(source);
+  await adding.getByRole('button', { name: 'Review package', exact: true }).click();
+  await expect(review).toContainText('reviewed-ui-fixture', { timeout: 30_000 });
   await adding.getByRole('button', { name: 'Install reviewed copy', exact: true }).click();
   await expect(adding).toHaveCount(0);
+  await expect(add).toBeFocused();
   const installed = packages.getByRole('list', { name: 'Installed packages', exact: true });
   // A row is found by what its own button says: the name, the version, then any unusual state.
   const said = (version: string) =>
@@ -129,13 +151,17 @@ test('reviewed packages install trusted, preserve plain text metadata, and keep 
   // Trust stays a fact of its own: a person can take it back and give it again.
   await item.getByRole('button', { name: 'Revoke trust', exact: true }).click();
   await expect(item).toContainText('Not trusted');
-  // The row itself offers the one thing an untrusted package asks for.
+  // The row itself offers the one thing an untrusted package asks for. An action that goes away
+  // once done leaves the keyboard on the row it belonged to.
   await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toHaveCount(0);
+  await expect(said('1.0.0')).toBeFocused();
   await item.getByRole('button', { name: 'Trust this content', exact: true }).click();
   await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toBeVisible();
+  await expect(said('1.0.0')).toBeFocused();
   const enabled = item.getByRole('switch', { name: 'Enabled', exact: true });
   await enabled.click();
   await expect(enabled).not.toBeChecked();
+  await expect(enabled).toBeFocused();
   await page.reload();
   await expect(said('1.0.0')).toHaveAccessibleName('reviewed-ui-fixture 1.0.0 Disabled');
   await said('1.0.0').click();
@@ -177,10 +203,12 @@ test('reviewed packages install trusted, preserve plain text metadata, and keep 
   await item.getByRole('button', { name: 'Remove', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(item.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
+  await expect(said('1.0.0')).toBeFocused();
   await page.reload();
   await expect(said('1.0.0')).toHaveAccessibleName('reviewed-ui-fixture 1.0.0 Removed');
   await item.getByRole('button', { name: 'Restore', exact: true }).click();
   await expect(said('1.0.0')).toHaveAccessibleName('reviewed-ui-fixture 1.0.0 Disabled');
+  await expect(said('1.0.0')).toBeFocused();
   await said('1.0.0').click();
   await expect(enabled).not.toBeChecked();
   await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toBeVisible();
