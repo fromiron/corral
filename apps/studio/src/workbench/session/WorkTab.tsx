@@ -246,6 +246,7 @@ export function WorkTab({
             <PendingTray
               sessionId={session.sessionId}
               runs={runs}
+              entries={session.entries}
               // A decision's subject opens as a document over the run record, as on the run page.
               onOpenArtifact={(run, artifact) =>
                 onPanel('run', { run, view: 'run', artifact, result: undefined })

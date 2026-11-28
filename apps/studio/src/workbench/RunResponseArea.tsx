@@ -52,7 +52,7 @@ export function RunResponseArea({
   return (
     <section
       data-testid="run-needs-you"
-      aria-label={run ? m('runWaiting', { run }) : tp('state.awaiting_user')}
+      aria-label={run ? m('runWaiting', { run: run.name }) : tp('state.awaiting_user')}
     >
       <RequestAreaContext.Provider value={true}>
         <div ref={focusRef} data-run-response={runId} tabIndex={-1} className="outline-none">

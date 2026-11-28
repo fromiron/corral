@@ -161,6 +161,7 @@ async function render(status: 'running' | 'succeeded' = 'running', locale: 'en' 
           tray={
             <PendingTray
               sessionId="session"
+              entries={[]}
               runs={[
                 {
                   runId: 'run_density',

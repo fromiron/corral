@@ -93,7 +93,9 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
         })
       : '';
   // Who waits comes first, where the place names it, as under a request card's title.
-  const detail = run ? `${run}\n${t('limit.explain')}` : t('limit.explain');
+  const detail = run
+    ? `${[run.name, run.request].filter(Boolean).join(' · ')}\n${t('limit.explain')}`
+    : t('limit.explain');
   const answers = (approval: ApprovalView) => ({
     primary: {
       label: t('limit.approve'),
@@ -171,7 +173,9 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
         clearHeading={t('continueAnswered')}
         emptyLabel=""
         // Several runs' stacks stand together in the tray: each named by its run as well.
-        labels={{ region: run ? t('continueRegionOfRun', { run }) : t('continueRegion') }}
+        labels={{
+          region: run ? t('continueRegionOfRun', { run: run.name }) : t('continueRegion'),
+        }}
       />
       {refused ? (
         <Banner role="alert" status="error">

@@ -817,7 +817,7 @@ function UserQuestionPrompt({
         // Each question's form is its own landmark, told apart by its first question, and by its
         // run where several runs' requests stand together.
         aria-label={[
-          run,
+          run?.name,
           request?.questions[0]
             ? t('userQuestionsNamed', { question: request.questions[0].prompt })
             : t('userQuestions'),

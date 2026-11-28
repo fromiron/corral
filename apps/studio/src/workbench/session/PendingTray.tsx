@@ -1,8 +1,9 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { pendingInteractions, type RunSummary } from '@corral/core';
+import { pendingInteractions, type RunSummary, type SessionEntry } from '@corral/core';
 import {
   AnswerDraftTarget,
   answeredExtensionNotices,
+  firstLine,
   InteractionPanel,
   RequestRunContext,
   type RunSessionStore,
@@ -55,6 +56,19 @@ function waitingOf(stores: readonly (readonly [string, RunSessionStore])[]) {
     .join(',');
 }
 
+const LONGEST_REQUEST_LINE = 200;
+
+function firstLineOfStartingRequest(entries: readonly Asked[], runId: string) {
+  const started = entries.find((entry) => entry.runId === runId && entry.intent !== 'steer');
+  const points = Array.from(started ? firstLine(started.text) : '');
+  if (!points.length) return null;
+  return points.length > LONGEST_REQUEST_LINE
+    ? `${points.slice(0, LONGEST_REQUEST_LINE).join('')}…`
+    : points.join('');
+}
+
+type Asked = Pick<SessionEntry, 'runId' | 'intent' | 'text'>;
+
 /**
  * What the conversation needs from the person now (composer-flow.md "지금 필요한 것"): the
  * approvals, questions, extension requests and continue-or-stop decisions the session's runs wait
@@ -64,10 +78,12 @@ function waitingOf(stores: readonly (readonly [string, RunSessionStore])[]) {
 export function PendingTray({
   sessionId,
   runs,
+  entries: asked,
   onOpenArtifact,
 }: {
   sessionId: string;
   runs: readonly RunSummary[];
+  entries: readonly Asked[];
   onOpenArtifact: (runId: string, artifactVersionId: string) => void;
 }) {
   const t = useTranslations('Sessions');
@@ -219,7 +235,12 @@ export function PendingTray({
             key={runId}
             value={
               entries.length > 1
-                ? t('runNumber', { number: runs.findIndex((run) => run.runId === runId) + 1 })
+                ? {
+                    name: t('runNumber', {
+                      number: runs.findIndex((run) => run.runId === runId) + 1,
+                    }),
+                    request: firstLineOfStartingRequest(asked, runId),
+                  }
                 : null
             }
           >

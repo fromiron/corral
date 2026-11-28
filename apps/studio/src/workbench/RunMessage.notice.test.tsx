@@ -121,6 +121,7 @@ async function show(sessionId: string | null = 'session_chat', tray = false) {
         {tray && sessionId ? (
           <PendingTray
             sessionId={sessionId}
+            entries={[]}
             runs={[
               {
                 runId: 'run_chat',
