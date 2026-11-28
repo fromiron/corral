@@ -16,7 +16,8 @@ import ko from '../../../packages/react/src/messages/ko.json' with { type: 'json
 import { templateForWorkspace } from './demo/templates.ts';
 import {
   createFromTemplate,
-  roleSteps,
+  type TeamShapeStep,
+  teamShape,
   templateCopyName,
   templateDefinition,
   templateText,
@@ -25,6 +26,7 @@ import {
 } from './templates.ts';
 
 const english = templateText(en);
+const role = (name: string, calls: string[] = []): TeamShapeStep => ({ kind: 'role', name, calls });
 const korean = templateText(ko);
 
 function memoryRepository() {
@@ -148,7 +150,10 @@ describe('library templates (docs/specs/features/library.md)', () => {
     const definition = templateDefinition('bug-fix', 'x', korean);
     expect(definition.name).toBe('버그 수정');
     expect(definition.roles.map((role) => role.name)).toEqual(['원인 조사', '수정', '검증']);
-    expect(roleSteps(definition)).toEqual([['원인 조사'], ['수정'], ['검증']]);
+    expect(teamShape(definition)).toEqual([
+      role('원인 조사'),
+      { kind: 'loop', rounds: 2, steps: [role('수정'), role('검증')] },
+    ]);
     expect(templateDefinition('bug-fix', 'x', english).roles.map((r) => r.name)).toEqual([
       'Cause investigation',
       'Fix',
@@ -216,14 +221,21 @@ describe('library templates (docs/specs/features/library.md)', () => {
   );
 
   it.each([
-    ['starter', '단일 에이전트', [['에이전트 1']]],
-    ['research-team', '조사 팀', [['조사자'], ['작성자'], ['검토자']]],
+    ['starter', '단일 에이전트', [role('에이전트 1')]],
+    [
+      'research-team',
+      '조사 팀',
+      [
+        role('조사자', ['조사 보조']),
+        { kind: 'loop', rounds: 2, steps: [role('작성자'), role('검토자')] },
+      ],
+    ],
   ] as const)(
     '%s in Korean names its team, roles, nodes and sample brief in Korean',
     (id, name, steps) => {
       const definition = templateDefinition(id, 'x', korean);
       expect(definition.name).toBe(name);
-      expect(roleSteps(definition)).toEqual(steps);
+      expect(teamShape(definition)).toEqual(steps);
       const hangul = /[가-힣]/;
       const words = [
         ...definition.roles.map((role) => role.name),
@@ -251,21 +263,39 @@ describe('library templates (docs/specs/features/library.md)', () => {
     },
   );
 
-  it.each([
-    ['starter', [['Agent 1']]],
-    ['implement-review', [['Implementation'], ['Review']]],
-    ['feature', [['Design'], ['Implementation'], ['Verification']]],
-    ['bug-fix', [['Cause investigation'], ['Fix'], ['Verification']]],
-    ['refactor', [['Behavior pin'], ['Restructuring'], ['Verification']]],
-    ['performance', [['Baseline'], ['Improvement'], ['Re-measurement']]],
-    ['adversarial-review', [['Scope'], ['Challenge A', 'Challenge B'], ['Verdict']]],
-    ['tech-decision', [['Framing'], ['Option A research', 'Option B research'], ['Decision']]],
-    ['code-investigation', [['Scope'], ['Trace', 'History'], ['Writing']]],
-    ['research-team', [['Researcher'], ['Writer'], ['Reviewer']]],
-    ['blank', []],
-  ] as const)('%s lists its roles in execution order, at once ones together', (id, steps) => {
-    expect(roleSteps(templateDefinition(id as WorkspaceTemplateId, 'x', english))).toEqual(steps);
+  // library.md's table of the eleven templates, as the picture on each card draws it.
+  const loop = (...steps: TeamShapeStep[]): TeamShapeStep => ({ kind: 'loop', rounds: 2, steps });
+  const together = (...names: string[]): TeamShapeStep => ({
+    kind: 'together',
+    roles: names.map((name) => ({ name, calls: [] })),
   });
+  it.each([
+    ['starter', [role('Agent 1')]],
+    ['implement-review', [loop(role('Implementation'), role('Review'))]],
+    ['feature', [role('Design'), loop(role('Implementation'), role('Verification'))]],
+    ['bug-fix', [role('Cause investigation'), loop(role('Fix'), role('Verification'))]],
+    ['refactor', [role('Behavior pin'), loop(role('Restructuring'), role('Verification'))]],
+    ['performance', [role('Baseline'), loop(role('Improvement'), role('Re-measurement'))]],
+    [
+      'adversarial-review',
+      [role('Scope'), together('Challenge A', 'Challenge B'), role('Verdict')],
+    ],
+    [
+      'tech-decision',
+      [role('Framing'), together('Option A research', 'Option B research'), role('Decision')],
+    ],
+    ['code-investigation', [role('Scope'), together('Trace', 'History'), role('Writing')]],
+    [
+      'research-team',
+      [role('Researcher', ['Research Helper']), loop(role('Writer'), role('Reviewer'))],
+    ],
+    ['blank', []],
+  ] as const)(
+    '%s draws its roles in order: at once ones together, the repeated stretch as a loop with its rounds, a called role under its caller',
+    (id, steps) => {
+      expect(teamShape(templateDefinition(id as WorkspaceTemplateId, 'x', english))).toEqual(steps);
+    },
+  );
 
   it('saves the same template twice as two separate teams with their own ids and names', async () => {
     const repository = memoryRepository();

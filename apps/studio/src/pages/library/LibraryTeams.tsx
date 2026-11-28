@@ -23,15 +23,15 @@ import {
   TableRow,
   Tooltip,
 } from '@corral/react/design-kit';
-import { ChevronRight, Info } from '@corral/react/icons';
+import { Info } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type ChangeEvent, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged } from '../../projects.ts';
 import { useServices } from '../../services.tsx';
 import {
-  roleSteps,
+  teamShape,
   templateDefinition,
   useTemplateText,
   WORKSPACE_TEMPLATES,
@@ -40,6 +40,7 @@ import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../../workbench/chosen
 import { chooseNewSessionTeam } from '../../workbench/newSessionDraft.ts';
 import { useConfirmFocus } from '../../workbench/useConfirmFocus.ts';
 import { useSessionAge } from '../../workbench/useSessionAge.ts';
+import { TeamShape } from './TeamShape.tsx';
 
 // The library's saved teams and templates for one project (docs/specs/features/library.md).
 // Importing, duplicating, moving and deleting use the existing Corral API.
@@ -414,16 +415,15 @@ export function LibraryTemplates({
 }) {
   const t = useTranslations('Workspace');
   const tp = useTranslations('Projects');
-  const format = useFormatter();
   const text = useTemplateText();
   const navigate = useNavigate();
-  // Each card shows the team its template makes: the roles in order, and whether any may
-  // change files or run commands.
+  // Each card shows the team its template makes: its shape, and whether any role may change
+  // files or run commands.
   const templates = useMemo(
     () =>
       WORKSPACE_TEMPLATES.map((id) => {
         const definition = templateDefinition(id, id.replaceAll('-', '_'), text);
-        return { id, steps: roleSteps(definition), readOnly: isReadOnlyTeam(definition) };
+        return { id, steps: teamShape(definition), readOnly: isReadOnlyTeam(definition) };
       }),
     [text],
   );
@@ -441,9 +441,9 @@ export function LibraryTemplates({
           <article key={id} aria-labelledby={`template-${id}`}>
             <Card className="h-full">
               <CardHeader>
-                <h3 id={`template-${id}`}>
+                <h2 id={`template-${id}`}>
                   <KitCardTitle>{t(`template.${id}.name`)}</KitCardTitle>
-                </h3>
+                </h2>
                 {readOnly ? (
                   <CardAction className="row-span-1">
                     <Badge variant="secondary" size="sm">
@@ -454,17 +454,7 @@ export function LibraryTemplates({
               </CardHeader>
               {steps.length ? (
                 <CardContent>
-                  <ol
-                    aria-label={t('templateRoles')}
-                    className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-caption text-muted-foreground"
-                  >
-                    {steps.map((names, index) => (
-                      <li key={names.join()} className="flex items-center gap-1">
-                        {index ? <ChevronRight aria-hidden className="size-3 shrink-0" /> : null}
-                        {format.list(names, { type: 'conjunction' })}
-                      </li>
-                    ))}
-                  </ol>
+                  <TeamShape steps={steps} label={t('templateRoles')} />
                 </CardContent>
               ) : null}
               <CardFooter className="mt-auto">

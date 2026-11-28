@@ -687,7 +687,7 @@
     "apps/studio/src/sessionConnection.ts": 1,
     "apps/studio/src/shortcutBindings.ts": 7,
     "apps/studio/src/shortcuts.ts": 22,
-    "apps/studio/src/templates.ts": 23,
+    "apps/studio/src/templates.ts": 21,
     "apps/studio/src/vitest.setup.ts": 1,
     "apps/studio/src/workbench/AutoModelMenu.tsx": 4,
     "apps/studio/src/workbench/Breadcrumbs.tsx": 12,

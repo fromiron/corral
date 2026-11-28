@@ -660,11 +660,11 @@ it.each(['en', 'ko'] as const)(
   },
 );
 
-it('shows the eleven templates in order with their roles, and marks the ones that change nothing', async () => {
+it('shows the eleven templates in order, each with a picture of its team, and marks the ones that change nothing', async () => {
   const { container } = await render('/library/templates?project=project_1');
   const cards = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')];
   const title = (card: HTMLElement) =>
-    card.querySelector('h3 [data-slot="card-title"] > span:last-child')?.textContent;
+    card.querySelector('h2 [data-slot="card-title"] > span:last-child')?.textContent;
   expect(cards.map(title)).toEqual([
     'Single agent',
     'Implement and review',
@@ -678,21 +678,43 @@ it('shows the eleven templates in order with their roles, and marks the ones tha
     'Research team',
     'Empty',
   ]);
-  const roles = (card: HTMLElement) =>
-    [...card.querySelectorAll('ol[aria-label="Roles"] > li')].map((step) => step.textContent);
-  expect(cards.map(roles)).toEqual([
+  // The picture of each team: its roles in order, the ones that run at once together, the
+  // stretch that repeats as a loop with its rounds, a called role under its caller.
+  const read = (list: Element): unknown[] =>
+    [...list.children].map((item) => {
+      const loop = item.querySelector(':scope > [data-shape="loop"] > ol');
+      if (loop) return { loop: loop.getAttribute('aria-label'), steps: read(loop) };
+      const together = item.querySelector(':scope > ul');
+      const names = (selector: string) =>
+        [...item.querySelectorAll(selector)].map((node) => node.textContent);
+      if (together)
+        return { [together.getAttribute('aria-label') ?? '']: names('[data-shape="role"]') };
+      const [name] = names('[data-shape="role"]');
+      const called = names('ul[aria-label="Calls"] [data-shape="called"]');
+      return called.length ? { role: name, calls: called } : name;
+    });
+  const shape = (card: HTMLElement) => {
+    const list = card.querySelector('ol[aria-label="Roles"]');
+    return list ? read(list) : [];
+  };
+  const loop = (...steps: unknown[]) => ({ loop: 'Repeats up to 2 rounds', steps });
+  expect(cards.map(shape)).toEqual([
     ['Agent 1'],
-    ['Implementation', 'Review'],
-    ['Design', 'Implementation', 'Verification'],
-    ['Cause investigation', 'Fix', 'Verification'],
-    ['Behavior pin', 'Restructuring', 'Verification'],
-    ['Baseline', 'Improvement', 'Re-measurement'],
-    ['Scope', 'Challenge A and Challenge B', 'Verdict'],
-    ['Framing', 'Option A research and Option B research', 'Decision'],
-    ['Scope', 'Trace and History', 'Writing'],
-    ['Researcher', 'Writer', 'Reviewer'],
+    [loop('Implementation', 'Review')],
+    ['Design', loop('Implementation', 'Verification')],
+    ['Cause investigation', loop('Fix', 'Verification')],
+    ['Behavior pin', loop('Restructuring', 'Verification')],
+    ['Baseline', loop('Improvement', 'Re-measurement')],
+    ['Scope', { 'At the same time': ['Challenge A', 'Challenge B'] }, 'Verdict'],
+    ['Framing', { 'At the same time': ['Option A research', 'Option B research'] }, 'Decision'],
+    ['Scope', { 'At the same time': ['Trace', 'History'] }, 'Writing'],
+    [{ role: 'Researcher', calls: ['Research Helper'] }, loop('Writer', 'Reviewer')],
     [],
   ]);
+  // The rounds are on the loop for the eye too; a role's name is in its card once.
+  expect(cards[2]?.querySelector('[data-shape="loop"] > [aria-hidden]')?.textContent).toBe('2');
+  expect(cards[2]?.textContent?.split('Implementation')).toHaveLength(2);
+  expect(cards[9]?.textContent?.split('Research Helper')).toHaveLength(2);
   const readOnly = (card: HTMLElement) =>
     [...card.querySelectorAll('[data-slot="card-action"]')].some(
       (mark) => mark.textContent === 'Read-only',
@@ -712,7 +734,7 @@ it('shows the eleven templates in order with their roles, and marks the ones tha
     true,
     false,
   ]);
-  // The name and the role flow only: no sentence retelling the flow.
+  // The name and the picture only: no sentence retelling the flow.
   const ids = [
     'starter',
     'implement-review',
@@ -751,6 +773,10 @@ it('shows the eleven templates in order with their roles, and marks the ones tha
     expect(buttons.at(-1)?.className).toContain('text-muted-foreground');
   }
   expect(cards[0]?.querySelector('button')?.className).not.toContain('text-muted-foreground');
+  // A card's name is the next heading level under the page's, none skipped.
+  expect(cards.map((card) => card.querySelector('h2, h3, h4')?.tagName)).toEqual(
+    cards.map(() => 'H2'),
+  );
   // No label over the grid: the tab already names it.
   expect(container.textContent).not.toContain('Start from a template');
   expect(container.querySelector('[role="tabpanel"] section[aria-label]')).toBeNull();
@@ -790,11 +816,19 @@ it('names every template’s roles in Korean on a Korean screen', async () => {
   const { container } = await render('/library/templates?project=project_1', undefined, 'ko');
   const cards = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')];
   const roles = (card: HTMLElement) =>
-    [...card.querySelectorAll('ol[aria-label="역할"] > li')].map((step) => step.textContent);
+    [
+      ...card.querySelectorAll(
+        'ol[aria-label="역할"] :is([data-shape="role"], [data-shape="called"])',
+      ),
+    ].map((step) => step.textContent);
   expect(roles(cards[0] as HTMLElement)).toEqual(['에이전트 1']);
   expect(roles(cards[2] as HTMLElement)).toEqual(['설계', '구현', '검증']);
-  expect(roles(cards[6] as HTMLElement)).toEqual(['범위 정리', '반증 A 및 반증 B', '심사']);
-  expect(roles(cards[9] as HTMLElement)).toEqual(['조사자', '작성자', '검토자']);
+  expect(roles(cards[6] as HTMLElement)).toEqual(['범위 정리', '반증 A', '반증 B', '심사']);
+  expect(roles(cards[9] as HTMLElement)).toEqual(['조사자', '조사 보조', '작성자', '검토자']);
+  // The picture's own names are Korean too.
+  expect(cards[2]?.querySelector('ol[aria-label="최대 2회 반복"]')).not.toBeNull();
+  expect(cards[6]?.querySelector('ul[aria-label="동시에"]')).not.toBeNull();
+  expect(cards[9]?.querySelector('ul[aria-label="불러 쓰는 역할"]')).not.toBeNull();
   for (const card of cards)
     for (const step of roles(card))
       expect([step, /[A-Za-z]{2,}/.test(step ?? '')]).toEqual([step, false]);

@@ -172,32 +172,96 @@ function demoDefinition(
   };
 }
 
-/**
- * The role names in execution order, one entry per step. Roles that run at the same time (the
- * branches of one port) share a step; a role that runs again later is not repeated.
- */
-export function roleSteps(definition: CorralDefinition): string[][] {
+export interface TeamShapeRole {
+  name: string;
+  /** The roles this one hands work to or asks, which run only when called. */
+  calls: string[];
+}
+
+/** One step of a team's shape, as a template card draws it (docs/specs/features/library.md). */
+export type TeamShapeStep =
+  | ({ kind: 'role' } & TeamShapeRole)
+  | { kind: 'together'; roles: TeamShapeRole[] }
+  | { kind: 'loop'; rounds: number | null; steps: TeamShapeStep[] };
+
+export function teamShape(definition: CorralDefinition): TeamShapeStep[] {
   const compiled = compileDefinition(definition);
   if (!compiled.ok) return [];
   const { plan } = compiled;
+  const nodes = new Map(definition.nodes.map((node) => [node.id, node]));
+  const roleName = (roleId: string) =>
+    definition.roles.find((role) => role.id === roleId)?.name ?? roleId;
   const branchOf = new Map<string, string>();
   for (const step of Object.values(plan.steps))
     for (const [port, targets] of Object.entries(portsOf(step)))
       if (targets.length > 1)
         for (const target of targets) branchOf.set(target.nodeId, `${step.nodeId}:${port}`);
-  const steps: { fork: string | null; names: string[] }[] = [];
-  const seen = new Set<string>();
+  const drawn = new Set<string>();
   for (const nodeId of plan.order) {
     const step = plan.steps[nodeId];
-    if (step?.kind !== 'agent' || seen.has(step.roleId)) continue;
-    seen.add(step.roleId);
-    const name = definition.roles.find((role) => role.id === step.roleId)?.name ?? step.roleId;
-    const fork = branchOf.get(nodeId) ?? null;
-    const last = steps.at(-1);
-    if (fork && last?.fork === fork) last.names.push(name);
-    else steps.push({ fork, names: [name] });
+    if (step?.kind === 'agent') drawn.add(step.roleId);
   }
-  return steps.map((step) => step.names);
+  const callsOf = (nodeId: string) =>
+    definition.capabilityLinks.flatMap((link) => {
+      const called = nodes.get(link.targetNodeId);
+      if (link.sourceNodeId !== nodeId || link.kind === 'advise' || called?.type !== 'agent')
+        return [];
+      if (drawn.has(called.roleId)) return [];
+      drawn.add(called.roleId);
+      return [roleName(called.roleId)];
+    });
+  const loopsAround = (nodeId: string) => {
+    const loops: { id: string; rounds: number | null }[] = [];
+    const walked = new Set<string>();
+    for (
+      let at = nodes.get(nodeId)?.parentId;
+      at && !walked.has(at);
+      at = nodes.get(at)?.parentId
+    ) {
+      walked.add(at);
+      const box = nodes.get(at);
+      if (box?.type === 'loop') loops.unshift({ id: at, rounds: box.maxIterations ?? null });
+    }
+    return loops;
+  };
+
+  const shape: TeamShapeStep[] = [];
+  const open: { id: string; steps: TeamShapeStep[] }[] = [];
+  const forkOf = new WeakMap<TeamShapeStep, string>();
+  const placed = new Set<string>();
+  for (const nodeId of plan.order) {
+    const step = plan.steps[nodeId];
+    if (step?.kind !== 'agent' || placed.has(step.roleId)) continue;
+    placed.add(step.roleId);
+    const loops = loopsAround(nodeId);
+    let shared = 0;
+    while (shared < open.length && open[shared]?.id === loops[shared]?.id) shared++;
+    open.length = shared;
+    for (const loop of loops.slice(shared)) {
+      const steps: TeamShapeStep[] = [];
+      (open.at(-1)?.steps ?? shape).push({ kind: 'loop', rounds: loop.rounds, steps });
+      open.push({ id: loop.id, steps });
+    }
+    const into = open.at(-1)?.steps ?? shape;
+    const role = { name: roleName(step.roleId), calls: callsOf(nodeId) };
+    const fork = branchOf.get(nodeId);
+    const last = into.at(-1);
+    if (fork && last?.kind === 'together' && forkOf.get(last) === fork) last.roles.push(role);
+    else if (fork) {
+      const together: TeamShapeStep = { kind: 'together', roles: [role] };
+      forkOf.set(together, fork);
+      into.push(together);
+    } else into.push({ kind: 'role', ...role });
+  }
+  const alone = (steps: TeamShapeStep[]): TeamShapeStep[] =>
+    steps.map((step) =>
+      step.kind === 'loop'
+        ? { ...step, steps: alone(step.steps) }
+        : step.kind === 'together' && step.roles.length === 1 && step.roles[0]
+          ? { kind: 'role', ...step.roles[0] }
+          : step,
+    );
+  return alone(shape);
 }
 
 function portsOf(step: PlanStep): Record<string, { nodeId: string }[]> {
