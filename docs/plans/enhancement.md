@@ -72,7 +72,7 @@
 | A1 결과 행 | Fable | `SessionPanels.tsx`의 결과 목록, `RunResultVersions.tsx` | 없음 | 끝 |
 | A2 현황과 하단 통계 | Fable | `widgets/ChatWidgets.tsx`, `OverviewWidgets.tsx`, `ComposerStats.tsx`, `selectors.ts` | 없음 | 끝 |
 | A3 사이드바와 확인 필요 집계 | Opus | `sessionList.ts`, `Sidebar.tsx` | 없음 | 끝 |
-| A4 변경 탭 | Fable이 정하고 Opus | `ReviewPage.tsx`, `SessionChangesPanel.tsx`, `PierreCode.tsx` | Fable의 명세 커밋 | 아직 |
+| A4 변경 탭 | Fable이 정하고 Opus | `ReviewPage.tsx`, `SessionChangesPanel.tsx`, `PierreCode.tsx` | Fable의 명세 커밋 | 끝 |
 | A5 대기 요청 | Opus | `ComposerQueue.tsx`, `Composer.tsx`의 대기열 호출부, `SessionEntries.tsx`의 요청 줄, `composer/queue.ts`, `entryMeta.ts`, `EntryStatus.tsx`, 서버의 `session-queue.ts`, 2차에서 저장소 두 파일 | 1차: Fable의 명세 커밋. 2차: 소유자의 커밋과 리뷰 | 1차 끝, 2차 대기 |
 
 A1·A2를 주 세션이 하는 동안 A3와 A5의 1차가 함께 돌 수 있다. A4는 A3가 끝난 자리에 들어간다.
