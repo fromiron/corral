@@ -9,9 +9,9 @@ import {
   type DiagnosticRow,
   type DiagnosticsReport,
   type DiagnosticTone,
-  diagnosticRows,
   diagnosticsSummary,
   displayVersion,
+  shownDiagnosticRows,
 } from '../../workbench/diagnostics.ts';
 import { useModelSettings } from '../../workbench/modelSettings.tsx';
 import { useSettingsNavigation } from '../../workbench/navigation.ts';
@@ -128,7 +128,7 @@ export function DiagnosticsSettingsPage() {
     pathEngine,
     localAi: serverModels ? localAi : { state: 'server-only' },
   };
-  const rows = diagnosticRows(report);
+  const rows = shownDiagnosticRows(report);
   const version = displayVersion(serverVersion ?? null);
 
   const status = (row: DiagnosticRow) => {

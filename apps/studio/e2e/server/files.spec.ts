@@ -98,7 +98,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
   try {
     await corral.open('/');
     const folder = await openFolderSettings(page);
-    await folder.getByLabel('Folder path on this computer').fill(original);
+    await folder.getByLabel('Path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     await expect(folder).toContainText('no uncommitted changes');
     const trust = folder.getByRole('switch', { name: /Trust this repository/ });

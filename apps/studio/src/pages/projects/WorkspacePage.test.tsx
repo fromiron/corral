@@ -251,7 +251,7 @@ it('heads the project with its folder state, pending count and actions', async (
   expect(inbox.pathname).toBe('/inbox');
   expect(inbox.searchParams.get('returnTo')).toBe('/projects/alpha');
   expect(container.textContent).not.toContain('Private request body');
-  expect(container.textContent).toContain('Folder linked');
+  expect(container.textContent).toContain('Source folder trusted');
   const buttons = [...container.querySelectorAll('button')].map((button) => button.textContent);
   expect(buttons).toContain('New conversation');
   expect(buttons.some((text) => text?.includes('New meeting'))).toBe(true);

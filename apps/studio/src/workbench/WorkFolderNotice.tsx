@@ -63,6 +63,7 @@ export function FolderAccessNotice({
   onAction?: () => void;
 }) {
   const t = useTranslations('Sessions');
+  const tf = useTranslations('Files');
   if (access === 'unknown') return null;
   // A usable folder has no next step: a mark, not a button, still reached by keyboard so its
   // tooltip can be read.
@@ -92,10 +93,9 @@ export function FolderAccessNotice({
   }
   // No usable folder: the folder icon alone, its sentence and next step its name and tooltip.
   const fact = access === 'missing' ? 'agentFolderMissing' : 'agentNoFiles';
-  const next =
-    access === 'untrusted' ? 'trustFolder' : access === 'missing' ? 'checkFolder' : 'linkFolder';
+  const next = access === 'missing' ? t('checkFolder') : tf('makeCopyThere');
   // The fact is a sentence with its own full stop; the next step becomes one.
-  const name = `${t(fact)} ${t(next)}.`;
+  const name = `${t(fact)} ${next}.`;
   return (
     <Tooltip content={name}>
       <Button

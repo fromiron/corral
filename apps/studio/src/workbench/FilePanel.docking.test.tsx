@@ -283,7 +283,7 @@ it('without a Paddock the Files tab says why it is read-only and links to set up
     async (container) => {
       expect(container.textContent).toContain(messages.Files.noCopyReadOnly);
       const setup = container.querySelector('a[href="/sessions/session?panel=changes"]');
-      expect(setup?.textContent).toBe(messages.Sessions.prepareWorkingCopy);
+      expect(setup?.textContent).toBe(messages.Files.makeCopyThere);
       expect(
         container.querySelector(`select[aria-label="${messages.Desktop.fileSource}"]`)?.textContent,
       ).toContain(messages.Desktop.sourceFolder);

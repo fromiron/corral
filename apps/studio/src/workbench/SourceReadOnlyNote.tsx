@@ -4,7 +4,6 @@ import { useTranslations } from 'use-intl';
 
 export function SourceReadOnlyNote({ sessionId }: { sessionId: string }) {
   const tf = useTranslations('Files');
-  const sessionText = useTranslations('Sessions');
   return (
     <Banner status="info" role="note">
       <BannerTitle>{tf('noCopyReadOnly')}</BannerTitle>
@@ -15,7 +14,7 @@ export function SourceReadOnlyNote({ sessionId }: { sessionId: string }) {
             <Link to="/sessions/$sessionId" params={{ sessionId }} search={{ panel: 'changes' }} />
           }
         >
-          {sessionText('prepareWorkingCopy')}
+          {tf('makeCopyThere')}
         </Button>
       </BannerActions>
     </Banner>

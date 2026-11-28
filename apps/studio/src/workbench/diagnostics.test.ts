@@ -5,6 +5,7 @@ import {
   diagnosticRows,
   diagnosticsSummary,
   displayVersion,
+  shownDiagnosticRows,
 } from './diagnostics.ts';
 
 const provider = (patch: Partial<ProviderAuthView> = {}): ProviderAuthView => ({
@@ -327,6 +328,21 @@ describe('diagnostic rows', () => {
       tone: 'error',
       action: 'retry',
     });
+    const shown = (pathEngine: DiagnosticsReport['pathEngine']) =>
+      shownDiagnosticRows(report(pathEngine)).some((value) => value.id === 'pathEngine');
+    expect(shown({ state: 'loaded', status: { engine: 'fff' } })).toBe(false);
+    expect(shown({ state: 'loaded', status: { engine: 'builtIn' } })).toBe(false);
+    expect(shown({ state: 'loading' })).toBe(false);
+    expect(shown({ state: 'loaded', status: { engine: 'builtIn', reason: 'timeBudget' } })).toBe(
+      true,
+    );
+    expect(shown({ state: 'failed' })).toBe(true);
+    expect(shownDiagnosticRows(report({ state: 'loading' })).map((value) => value.id)).toEqual([
+      'models',
+      'server',
+      'folder',
+      'localAi',
+    ]);
     const summary = diagnosticsSummary(
       report({ state: 'loaded', status: { engine: 'builtIn', reason: 'loadFailed' } }),
     );

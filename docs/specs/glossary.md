@@ -74,7 +74,7 @@
 | 답변의 일부를 골라 요청에 싣는 일 | Quote / 인용 | 첨부 출처 `reply`, 단축키 `reply.quote` | 발췌, 스니펫 |
 | 사람이 계속할지 정하는 응답 | Continue? / 계속 여부 | 회의 `hold` | 한도 초과(끝난 것처럼 읽힘) |
 
-화면에 보이는 문장은 두 언어의 메시지 파일에 있다. 서버나 core가 거절한 까닭은 코드가 있으면 Studio가 그 코드의 문장으로 말하고, 영어 원문을 그대로 보이지 않는다: 다른 곳에서 저장된 Corral("This Corral was saved elsewhere. Reload before saving." / "이 Corral이 다른 곳에서 저장되었습니다. 다시 불러온 뒤 저장하세요."), 한꺼번에 몰린 요청(HTTP 429, "Too many requests at once. Try again in a moment." / "요청이 한꺼번에 너무 많았습니다. 잠시 뒤 다시 시도하세요."), 예약 화면의 거절([Workbench](workbench.md#전역-셸과-화면-틀))이 그렇다.
+화면에 보이는 문장은 두 언어의 메시지 파일에 있다. 서버나 core가 거절한 까닭은 코드가 있으면 Studio가 그 코드의 문장으로 말하고, 영어 원문을 그대로 보이지 않는다: 다른 곳에서 저장된 Corral, 한꺼번에 몰린 요청(HTTP 429, "Too many requests at once. Try again in a moment." / "요청이 한꺼번에 너무 많았습니다. 잠시 뒤 다시 시도하세요."), 예약 화면의 거절([Workbench](workbench.md#전역-셸과-화면-틀))이 그렇다.
 
 기본 프로젝트의 표시 이름은 예약 선택기와 프로젝트 탐색에서 같은 지역화 값을 사용한다. 실행 비교의 복귀 링크는 실제 이동 대상인 프로젝트 홈을 가리킨다. 반영 뒤 외부에서 바뀐 파일을 되돌리지 않은 결과는 변경 시점과 보존한 이유를 함께 설명한다.
 

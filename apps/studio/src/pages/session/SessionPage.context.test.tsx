@@ -349,7 +349,9 @@ async function mount(
 
 it('exposes the demo model picker as simulation without pretending a model is connected', async () => {
   const f = await mount('demo_picker', null, [], [], 'browser');
-  await f.click(messages.Sessions.autoModel);
+  await f.click(
+    messages.Sessions.autoModelNamed.replace('{name}', messages.Composer.modelPicker.demo),
+  );
   expect(document.body.textContent).toContain(messages.Composer.modelPicker.demoEmpty);
   expect(document.querySelector('[role="option"]')).toBeNull();
   expect(document.querySelector('[role="switch"]')).toBeNull();

@@ -65,7 +65,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await corral.open('/');
   await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  const model = page.getByRole('button', { name: 'Model', exact: true });
+  const model = page.getByRole('button', { name: /^Model(: .+)?$/ });
   await model.click();
   const settings = page.getByRole('dialog', { name: 'Model settings', exact: true });
   const policy = settings.getByRole('combobox', { name: 'Reasoning effort', exact: true });

@@ -7,9 +7,9 @@ import en from '../../../../packages/react/src/messages/en.json';
 it('explains excluded local changes in complete English for one and many', () => {
   const t = createTranslator({ locale: 'en', messages: en });
   expect(t('Files.createHint', { changed: 1 })).toBe(
-    'Your folder’s 1 uncommitted change is not included.',
+    'The source folder’s 1 uncommitted change is not included.',
   );
   expect(t('Files.createHint', { changed: 3 })).toBe(
-    'Your folder’s 3 uncommitted changes are not included.',
+    'The source folder’s 3 uncommitted changes are not included.',
   );
 });

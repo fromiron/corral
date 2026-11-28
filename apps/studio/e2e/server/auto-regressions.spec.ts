@@ -31,7 +31,7 @@ async function autoSession(page: Page, corral: Harness) {
   await corral.open('/');
   await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Model(: .+)?$/ })).toBeVisible();
   return new URL(page.url()).pathname.split('/').at(-1) ?? '';
 }
 

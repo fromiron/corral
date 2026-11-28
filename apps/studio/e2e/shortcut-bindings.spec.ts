@@ -13,8 +13,7 @@ test('shortcuts edit, persist, dispatch, reset and keep Search reachable', async
     await expect(settings).toHaveCount(0);
   };
   const edit = page.getByRole('button', {
-    name: 'Change shortcut for Command palette',
-    exact: true,
+    name: /, change shortcut for Command palette$/,
   });
   await openShortcuts();
   await edit.click();
@@ -46,8 +45,7 @@ test('capture rejects conflicts and editing keys, Escape leaves binding unchange
 }) => {
   await page.goto('/settings?section=shortcuts');
   const edit = page.getByRole('button', {
-    name: 'Change shortcut for Command palette',
-    exact: true,
+    name: /, change shortcut for Command palette$/,
   });
   await edit.click();
   await edit.press('Control+b');

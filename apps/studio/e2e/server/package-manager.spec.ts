@@ -71,7 +71,7 @@ test('reviewed packages install trusted, preserve plain text metadata, and keep 
   writeFileSync(join(source, 'extension.ts'), 'export default () => {};');
   await corral.open('/');
   const folder = await openFolderSettings(page);
-  await folder.getByLabel('Folder path on this computer').fill(repository);
+  await folder.getByLabel('Path on this computer').fill(repository);
   await folder.getByRole('button', { name: 'Link folder' }).click();
   await expect(folder).toContainText('no uncommitted changes');
   const trust = folder.getByRole('switch', { name: /Trust this repository/ });

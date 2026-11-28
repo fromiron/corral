@@ -187,7 +187,7 @@ const tools = [
 async function prepareSession(page: Page, capability: CapabilityFixture) {
   await capability.open('/');
   const folder = await openFolderSettings(page);
-  await folder.getByLabel('Folder path on this computer').fill(capability.source);
+  await folder.getByLabel('Path on this computer').fill(capability.source);
   await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
   const trust = folder.getByRole('switch', { name: /Trust this repository/ });
   await trust.click();

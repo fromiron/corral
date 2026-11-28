@@ -169,7 +169,6 @@ const W = {
   timeline: messages.RunMonitor.time,
   toggle: messages.SessionPanel.toggle,
   maximize: messages.SessionPanel.maximize,
-  restore: messages.SessionPanel.restore,
   add: messages.SessionPanel.add,
   runHistory: messages.Docking.history,
 };
@@ -322,7 +321,7 @@ function operable(element: HTMLElement) {
 const toggleButton = () => buttons(W.toggle).find((button) => button.hasAttribute('aria-pressed'));
 const maximizeButton = () => {
   const head = side();
-  return head ? [...buttons(W.maximize, head), ...buttons(W.restore, head)][0] : undefined;
+  return head ? buttons(W.maximize, head)[0] : undefined;
 };
 const composer = () => document.querySelector<HTMLElement>('[data-testid="chat-composer"]');
 const composerStop = () => {

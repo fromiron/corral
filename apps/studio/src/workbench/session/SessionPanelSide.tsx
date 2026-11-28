@@ -469,7 +469,7 @@ export function SessionPanelSide({
   });
   const openedLabel = opened ? tabs.find((tab) => tab.id === opened.key)?.label : undefined;
   const maximized = state.presentation === 'maximized';
-  const maximizeLabel = t(maximized ? 'restore' : 'maximize');
+  const maximizeLabel = t('maximize');
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center border-b border-line px-2">

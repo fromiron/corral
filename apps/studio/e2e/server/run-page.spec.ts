@@ -198,7 +198,7 @@ test('a run chosen from the "+" run history opens its tab without a history entr
   await expect.poll(() => status(nextRunId)).toBe('succeeded');
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
   await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
-  await sessionPanel(page).getByRole('button', { name: 'Open', exact: true }).click();
+  await sessionPanel(page).getByRole('button', { name: 'Open in panel', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Runs', exact: true }).click();
   const runs = page.getByRole('menu', { name: 'Runs', exact: true }).getByRole('menuitem');
   await expect(runs).toHaveCount(2);

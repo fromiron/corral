@@ -4,9 +4,15 @@ async function request<T>(path = '', method = 'GET', body?: unknown): Promise<T>
   const headers = new Headers({ accept: 'application/json' });
   if (method !== 'GET') {
     const session = await fetch('/api/v1/session', { credentials: 'same-origin' });
-    if (!session.ok) throw new Error('Open this server’s sign-in link again.');
+    if (!session.ok)
+      throw Object.assign(new Error('Open this server’s sign-in link again.'), {
+        code: 'SESSION_INVALID',
+      });
     const { csrfToken } = (await session.json()) as { csrfToken?: string };
-    if (!csrfToken) throw new Error('The server session has expired.');
+    if (!csrfToken)
+      throw Object.assign(new Error('The server session has expired.'), {
+        code: 'SESSION_INVALID',
+      });
     headers.set('x-corral-csrf', csrfToken);
     headers.set('content-type', 'application/json');
   }
@@ -20,6 +26,7 @@ async function request<T>(path = '', method = 'GET', body?: unknown): Promise<T>
     const value = await response.json().catch(() => null);
     throw Object.assign(new Error(value?.error?.message ?? 'The schedule could not be saved.'), {
       status: response.status,
+      code: value?.error?.code,
     });
   }
   return response.status === 204 ? (undefined as T) : response.json();

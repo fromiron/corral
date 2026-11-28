@@ -49,7 +49,7 @@ test('file and line references remain independent and Escape clears only an empt
     await corral.open('/');
     await page.setViewportSize({ width: 1262, height: 833 });
     const folder = await openFolderSettings(page);
-    await folder.getByLabel('Folder path on this computer').fill(original);
+    await folder.getByLabel('Path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
     await expect(folder).toContainText('no uncommitted changes');
     await closeSettings(page);

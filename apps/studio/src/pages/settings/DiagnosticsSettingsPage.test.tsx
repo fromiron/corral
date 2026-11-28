@@ -97,7 +97,7 @@ it('says which parts need the local server in the browser demo instead of leavin
   for (const id of ['models', 'localAi'])
     expect(row(container, id)?.textContent).toContain('Available with the local server');
   expect(row(container, 'server')?.textContent).toContain('Browser demo');
-  expect(row(container, 'pathEngine')?.textContent).toContain('Built-in');
+  expect(row(container, 'pathEngine')).toBeNull();
   expect(row(container, 'folder')?.textContent).toContain('Linked');
 });
 
@@ -316,9 +316,9 @@ it("shows the server's path engine and the reason it fell back to the built-in e
   expect(pathEngine()).toContain('Built-in');
   expect(pathEngine()).toContain('The FFF module could not be loaded');
   status = { engine: 'fff' };
+  expect(pathEngine()).toContain('File path search');
   const again = await render();
-  expect(row(again, 'pathEngine')?.textContent).toContain('FFF');
-  expect(row(again, 'pathEngine')?.textContent).not.toContain('could not be loaded');
+  expect(row(again, 'pathEngine')).toBeNull();
 });
 
 it('says the path engine could not be checked when the server does not answer', async () => {

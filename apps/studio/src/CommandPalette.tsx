@@ -951,7 +951,10 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
                     <Button
                       variant="ghost"
                       size="compact"
-                      aria-label={t('edit', { command: what })}
+                      aria-label={t('edit', {
+                        command: what,
+                        keys: capture === id ? t('capture') : keys,
+                      })}
                       aria-pressed={capture === id}
                       data-shortcut-capture={capture === id ? 'true' : undefined}
                       onClick={() => {

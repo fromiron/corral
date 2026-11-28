@@ -590,7 +590,7 @@ async function commandSession(page: Page, corral: Harness) {
   git('commit', '-q', '-m', 'source');
   await corral.open('/');
   const folder = await openFolderSettings(page);
-  await folder.getByLabel('Folder path on this computer').fill(original);
+  await folder.getByLabel('Path on this computer').fill(original);
   await folder.getByRole('button', { name: 'Link folder' }).click();
   await folder.getByRole('switch', { name: /Trust this repository/ }).click();
   await closeSettings(page);

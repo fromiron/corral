@@ -1,4 +1,4 @@
-import type { Schedule, ScheduleDraft, ScheduledOccurrence } from '@corral/contracts';
+import type { ErrorCode, Schedule, ScheduleDraft, ScheduledOccurrence } from '@corral/contracts';
 import type { AutoStart, AutoStartResult, CorralRepository } from '@corral/core';
 import type { ScheduleStore } from './store.ts';
 import { nextScheduleTime } from './time.ts';
@@ -17,9 +17,11 @@ export interface ScheduleDependencies {
 
 export class ScheduleError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  readonly code?: ErrorCode;
+  constructor(status: number, message: string, code?: ErrorCode) {
     super(message);
     this.status = status;
+    if (code) this.code = code;
   }
 }
 
@@ -146,7 +148,7 @@ export class ScheduleService {
       nextAt,
     };
     if (!this.store.replace(schedule, expectedRevision))
-      throw new ScheduleError(409, 'Schedule changed. Reload before saving.');
+      throw new ScheduleError(409, 'Schedule changed. Reload before saving.', 'REVISION_CONFLICT');
     this.pending.get(id)?.abort();
     return schedule;
   }
@@ -181,15 +183,24 @@ export class ScheduleService {
         expectedRevision,
       )
     )
-      throw new ScheduleError(409, 'Schedule changed. Reload before deleting.');
+      throw new ScheduleError(
+        409,
+        'Schedule changed. Reload before deleting.',
+        'REVISION_CONFLICT',
+      );
     this.pending.get(id)?.abort();
   }
 
   private require(id: string, revision: number) {
     const schedule = this.store.get(id);
-    if (!schedule || schedule.deletedAt) throw new ScheduleError(404, 'Schedule not found.');
+    if (!schedule || schedule.deletedAt)
+      throw new ScheduleError(404, 'Schedule not found.', 'TARGET_NOT_FOUND');
     if (schedule.revision !== revision)
-      throw new ScheduleError(409, 'Schedule changed. Reload before continuing.');
+      throw new ScheduleError(
+        409,
+        'Schedule changed. Reload before continuing.',
+        'REVISION_CONFLICT',
+      );
     return schedule;
   }
 
