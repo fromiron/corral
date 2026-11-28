@@ -90,7 +90,7 @@ for (const width of [390, 636, 967])
         .getByRole('banner')
         .getByRole('button', { name: 'Show the sidebar', exact: true });
       await trigger.click();
-      const drawer = page.getByRole('dialog', { name: 'Show the sidebar', exact: true });
+      const drawer = page.getByRole('dialog', { name: 'Navigation', exact: true });
       await expect(drawer).toBeVisible();
       await expect
         .poll(async () => {
