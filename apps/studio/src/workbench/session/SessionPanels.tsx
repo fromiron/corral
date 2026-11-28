@@ -3,8 +3,8 @@ import type { TextAttachment } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { canReadArtifactBody, type RunSummary, type WorkSession } from '@corral/core';
 import { PresenceLabel, runResults } from '@corral/react';
-import { Button, SectionLabel } from '@corral/react/design-kit';
-import { FileText } from '@corral/react/icons';
+import { Button, SectionLabel, Tooltip } from '@corral/react/design-kit';
+import { FileText, PanelRight } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -187,11 +187,14 @@ export function useRunNames(runs: readonly RunSummary[], entries: WorkSession['e
 export function ArtifactsPanel({
   runs,
   onOpen,
+  onOpenRun,
 }: {
   runs: RunSummary[];
   onOpen: (runId: string, artifactVersionId: string) => void;
+  onOpenRun: (runId: string) => void;
 }) {
   const tw = useTranslations('Workbench');
+  const ts = useTranslations('Sessions');
   const tr = useTranslations('Results');
   const td = useTranslations('Desktop');
   const ta = useTranslations('Artifact');
@@ -300,9 +303,18 @@ export function ArtifactsPanel({
       ) : (
         groups.map((group) => (
           <section key={group.runId} aria-label={group.heading} className="flex flex-col gap-1">
-            <div className="px-4">
-              <SectionLabel>{group.heading}</SectionLabel>
-            </div>
+            <SectionLabel>
+              <Tooltip content={ts('openRun')}>
+                <Button
+                  variant="ghost-muted"
+                  className="px-4"
+                  onClick={() => onOpenRun(group.runId)}
+                >
+                  <PanelRight />
+                  {group.heading}
+                </Button>
+              </Tooltip>
+            </SectionLabel>
             <ul className="flex flex-col gap-0.5">
               {group.made.map((item) => {
                 const row = (

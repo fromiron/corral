@@ -1207,6 +1207,7 @@ function WorkSessionPage() {
           <ArtifactsPanel
             runs={runs}
             onOpen={(runId, result) => open({ panel: 'run', run: runId, view: 'results', result })}
+            onOpenRun={(runId) => open({ panel: 'run', run: runId, view: 'run' })}
           />
         </div>
       );

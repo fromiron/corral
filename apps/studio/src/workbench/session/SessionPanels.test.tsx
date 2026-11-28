@@ -123,7 +123,7 @@ it('lists a partial result the run no longer keeps as a row that cannot be opene
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <ArtifactsPanel runs={runs} onOpen={onOpen} />
+        <ArtifactsPanel runs={runs} onOpen={onOpen} onOpenRun={() => {}} />
       </IntlProvider>,
     ),
   );
@@ -230,6 +230,7 @@ const results = async (
     },
   };
   const onOpen = vi.fn();
+  const onOpenRun = vi.fn();
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -240,13 +241,32 @@ const results = async (
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <ArtifactsPanel runs={runs} onOpen={onOpen} />
+        <ArtifactsPanel runs={runs} onOpen={onOpen} onOpenRun={onOpenRun} />
       </IntlProvider>,
     ),
   );
   await act(async () => {});
-  return { container, onOpen };
+  return { container, onOpen, onOpenRun };
 };
+
+it('opens a run from its group heading, the way to a run whose results are no longer kept', async () => {
+  const released: RunProjection = {
+    ...emptyProjection('run_1'),
+    status: 'succeeded',
+    artifacts: { old: { ...version('old', 'draft'), bodyAvailable: false } },
+    output: { nodeId: 'write', artifactVersionIds: ['old'] },
+  };
+  const { container, onOpen, onOpenRun } = await results({ run_1: released }, [
+    { runId: 'run_1', status: 'succeeded' } as RunSummary,
+  ]);
+  const group = container.querySelector('section[aria-label="Run #1"]');
+  expect(group?.querySelector('li button')).toBeNull();
+  const heading = group?.querySelector<HTMLButtonElement>('h2 button');
+  expect(heading?.textContent).toBe('Run #1');
+  await act(async () => heading?.click());
+  expect(onOpenRun).toHaveBeenCalledWith('run_1');
+  expect(onOpen).not.toHaveBeenCalled();
+});
 
 it('does not offer to open a final result an earlier run no longer keeps', async () => {
   // A later run of the session succeeded, so the earlier run's final text was released
