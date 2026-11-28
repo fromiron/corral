@@ -262,9 +262,10 @@ it('the visible meta is the time and what became of the message; the rest stays 
   // The same day shows the time alone; the full date stays in the tooltip.
   expect(time?.textContent).toBe('9:30 AM');
   expect(time?.getAttribute('title')).toContain('11/9/26');
-  expect(normal.container.querySelector('.sr-only')?.textContent).toContain(
-    `${messages.Sessions.youAsked.replace('{intent}', messages.Sessions.intent.next)} · ${messages.Sessions.state.started}`,
-  );
+  // A new request is no kind of message, so the line for assistive tech names none.
+  const said = normal.container.querySelector('.sr-only')?.textContent ?? '';
+  expect(said).toContain(`${messages.Sessions.you} · ${messages.Sessions.state.started}`);
+  expect(said).not.toContain(messages.Sessions.intent.next);
   const refused = await show(
     entry({ intent: 'queue', state: 'refused', runId: null, detail: 'The request did not start' }),
   );

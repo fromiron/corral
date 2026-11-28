@@ -2185,7 +2185,7 @@
     "timelineEmpty": "아직 요청이 없습니다. 아래에 첫 요청을 쓰세요.",
     "intentLabel": "보낼 종류",
     "intent": {
-      "next": "다음 요청",
+      "next": "새 요청",
       "queue": "다음 요청 · 지금 실행이 끝난 뒤",
       "steer": "진행 중인 실행에 합류",
       "explain": "결과 질문"
@@ -2211,7 +2211,7 @@
     "send": "보내기",
     "sendHint": "Ctrl+Enter(⌘+Enter)로 보냅니다. Enter는 줄을 바꿉니다.",
     "requestLabel": "요청",
-    "queueHeading": "대기 중인 다음 작업",
+    "queueHeading": "대기 요청",
     "startNow": "지금 시작",
     "resendAt": "{time}에 다시 보냄",
     "remove": "지우기",
@@ -2227,9 +2227,10 @@
     "rename": "이름 바꾸기",
     "failed": "저장하지 못했습니다: {message}",
     "youAsked": "나 · {intent}",
+    "you": "나",
     "targetChip": "대상: {label} · 다음 모델 요청에 전달",
     "editQueued": "수정",
-    "autoStart": "실행이 끝나면 대기 작업을 자동으로 시작",
+    "autoStart": "실행이 끝나면 다음 대기 요청을 시작",
     "autoStartHint": "실행이 끝나면 이 페이지가 닫혀 있어도 서버가 시작합니다. 서버를 다시 시작한 뒤에는 시작하지 않습니다.",
     "preRun": "{team} · 모델 {profiles} · 파일: {files} · {mode}",
     "filesCopy": "Paddock을 바꿀 수 있음",
@@ -2808,7 +2809,7 @@
       "onOnly": "켜짐"
     },
     "destination": {
-      "next": "보낼 대상: 이 대화의 새 실행 · 다음 요청",
+      "next": "보낼 대상: 이 대화의 새 실행 · 새 요청",
       "queue": "보낼 대상: 이 대화의 지금 실행이 끝난 뒤 · 다음 요청",
       "steer": "보낼 대상: 실행 #{number} · {name} · 합류",
       "steerUnavailable": "{name}에 합류 · 현재 전달할 수 없음",

@@ -121,10 +121,10 @@ test('file and line references remain independent and Escape clears only an empt
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(box).toBeInViewport();
     await expect(box).toHaveAccessibleDescription(
-      'Send to: new run in this conversation · next request',
+      'Send to: new run in this conversation · new request',
     );
     await expect(page.getByTestId('composer-destination')).toHaveText(
-      'Send to: new run in this conversation · next request',
+      'Send to: new run in this conversation · new request',
     );
     await page.screenshot({ path: testInfo.outputPath('composer-destination-narrow.png') });
     expect(corral.server.coordinator.listRuns()).toHaveLength(0);

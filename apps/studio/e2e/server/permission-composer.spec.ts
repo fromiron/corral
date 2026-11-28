@@ -79,11 +79,11 @@ test.describe('queued permission ownership', () => {
     await expect
       .poll(async () => (await readSession(page)).entries.at(-1)?.permissionMode)
       .toBe('ask');
-    const queue = page.getByRole('region', { name: 'Queued next tasks' });
+    const queue = page.getByRole('region', { name: 'Queued requests' });
     await expect(queue).toContainText('Queued request');
     // Left on, the server would start it when the run ends; here the person starts it.
     await queue
-      .getByRole('switch', { name: 'Start the next queued task when the run ends', exact: true })
+      .getByRole('switch', { name: 'Start the next queued request when the run ends', exact: true })
       .click();
     await expect(queue.getByRole('button', { name: 'Start now' })).toBeEnabled({
       timeout: 20_000,

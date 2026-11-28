@@ -2185,7 +2185,7 @@
     "timelineEmpty": "Nothing asked yet. Write the first request below.",
     "intentLabel": "What this is",
     "intent": {
-      "next": "Next request",
+      "next": "New request",
       "queue": "Next request, after the current run",
       "steer": "Join the running run",
       "explain": "Question about the result"
@@ -2211,7 +2211,7 @@
     "send": "Send",
     "sendHint": "Ctrl+Enter (⌘+Enter) sends. Enter adds a line.",
     "requestLabel": "Request",
-    "queueHeading": "Queued next tasks",
+    "queueHeading": "Queued requests",
     "startNow": "Start now",
     "resendAt": "Resends at {time}",
     "remove": "Remove",
@@ -2227,9 +2227,10 @@
     "rename": "Rename",
     "failed": "Could not save: {message}",
     "youAsked": "You · {intent}",
+    "you": "You",
     "targetChip": "To {label} · at its next model request",
     "editQueued": "Edit",
-    "autoStart": "Start the next queued task when the run ends",
+    "autoStart": "Start the next queued request when the run ends",
     "autoStartHint": "The server starts it when the run ends, even with this page closed; never after a restart.",
     "preRun": "{team} · models {profiles} · files: {files} · {mode}",
     "filesCopy": "can change the Paddock",
@@ -2808,7 +2809,7 @@
       "onOnly": "On"
     },
     "destination": {
-      "next": "Send to: new run in this conversation · next request",
+      "next": "Send to: new run in this conversation · new request",
       "queue": "Send to: after the current run in this conversation · next request",
       "steer": "Send to: Run #{number} · {name} · Join",
       "steerUnavailable": "Join {name} · target unavailable",
