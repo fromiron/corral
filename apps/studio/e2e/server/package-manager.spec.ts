@@ -79,21 +79,33 @@ test('reviewed packages install trusted, preserve plain text metadata, and keep 
   await expect(trust).toBeChecked();
   await page.goto(`${corral.server.url}/settings/hooks?projectId=default`);
   const packages = page.getByRole('region', { name: 'Packages', exact: true });
-  await packages.getByLabel('Package source', { exact: true }).fill(source);
-  await packages.getByRole('button', { name: 'Review package', exact: true }).click();
-  const review = packages.getByRole('region', { name: 'Reviewed copy', exact: true });
+  const adding = page.getByRole('dialog', { name: 'Add package', exact: true });
+  // The list is all there is until a package is being added.
+  await expect(packages.getByRole('textbox')).toHaveCount(0);
+  await packages.getByRole('button', { name: 'Add package', exact: true }).click();
+  await adding.getByLabel('Package source', { exact: true }).fill(source);
+  await adding.getByRole('button', { name: 'Review package', exact: true }).click();
+  const review = adding.getByRole('region', { name: 'Reviewed copy', exact: true });
   await expect(review).toContainText('reviewed-ui-fixture', { timeout: 30_000 });
   await expect(review).toContainText('MIT');
   await expect(review).toContainText('read_file');
   await expect(review.getByText('<img src=x onerror=alert(1)>', { exact: true })).toBeVisible();
   await expect(review.locator('img')).toHaveCount(0);
-  await review.getByRole('button', { name: 'Install reviewed copy', exact: true }).click();
-  const installed = packages.getByRole('region', { name: 'Installed packages', exact: true });
-  const item = installed.getByRole('listitem').filter({ hasText: 'reviewed-ui-fixture · 1.0.0' });
+  await adding.getByRole('button', { name: 'Install reviewed copy', exact: true }).click();
+  await expect(adding).toHaveCount(0);
+  const installed = packages.getByRole('list', { name: 'Installed packages', exact: true });
+  // A row is found by what its own button says: the name, the version, then any unusual state.
+  const said = (version: string) =>
+    page.getByRole('button', {
+      name: new RegExp(`^reviewed-ui-fixture ${version.replaceAll('.', '\\.')}`),
+    });
+  const row = (version: string) => installed.getByRole('listitem').filter({ has: said(version) });
+  const item = row('1.0.0');
   // Installing the reviewed copy trusts it; there is no separate approval step.
-  await expect(item).not.toContainText('Not trusted');
+  await expect(said('1.0.0')).toHaveAccessibleName('reviewed-ui-fixture 1.0.0');
+  await expect(item.getByRole('button')).toHaveCount(1);
+  await said('1.0.0').click();
   await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toBeVisible();
-  await item.getByText('Package details', { exact: true }).click();
   // Lose only the reply after the production endpoint commits registration.
   await page.route(
     '**/api/v1/harness/packages/*/mcp',
@@ -117,32 +129,37 @@ test('reviewed packages install trusted, preserve plain text metadata, and keep 
   // Trust stays a fact of its own: a person can take it back and give it again.
   await item.getByRole('button', { name: 'Revoke trust', exact: true }).click();
   await expect(item).toContainText('Not trusted');
+  // The row itself offers the one thing an untrusted package asks for.
+  await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toHaveCount(0);
   await item.getByRole('button', { name: 'Trust this content', exact: true }).click();
   await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toBeVisible();
-  await item.getByRole('button', { name: 'Disable', exact: true }).click();
+  const enabled = item.getByRole('switch', { name: 'Enabled', exact: true });
+  await enabled.click();
+  await expect(enabled).not.toBeChecked();
   await page.reload();
-  await expect(item.getByRole('button', { name: 'Enable', exact: true })).toBeVisible();
+  await expect(said('1.0.0')).toHaveAccessibleName('reviewed-ui-fixture 1.0.0 Disabled');
+  await said('1.0.0').click();
+  await expect(enabled).not.toBeChecked();
   await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toBeVisible();
 
   // A reviewed update is fixed even if the source folder changes before installation.
   version('1.1.0');
-  await packages.getByLabel('Package source', { exact: true }).fill(source);
-  await packages.getByRole('combobox', { name: 'Compare with', exact: true }).click();
+  await packages.getByRole('button', { name: 'Add package', exact: true }).click();
+  await adding.getByLabel('Package source', { exact: true }).fill(source);
+  await adding.getByRole('combobox', { name: 'Compare with', exact: true }).click();
   await page.getByRole('option', { name: 'reviewed-ui-fixture · 1.0.0', exact: true }).click();
-  await packages.getByRole('button', { name: 'Review package', exact: true }).click();
+  await adding.getByRole('button', { name: 'Review package', exact: true }).click();
   await expect(review).toContainText('Changed files', { timeout: 30_000 });
   version('9.9.9');
-  await review.getByRole('button', { name: 'Install reviewed copy', exact: true }).click();
-  await expect(installed).toContainText('reviewed-ui-fixture · 1.1.0');
+  await adding.getByRole('button', { name: 'Install reviewed copy', exact: true }).click();
+  await expect(said('1.1.0')).toHaveAccessibleName('reviewed-ui-fixture 1.1.0');
   await expect(installed).not.toContainText('9.9.9');
+  await said('1.1.0').click();
   await expect(
-    installed
-      .getByRole('listitem')
-      .filter({ hasText: 'reviewed-ui-fixture · 1.1.0' })
-      .getByRole('button', { name: 'Revoke trust', exact: true }),
+    row('1.1.0').getByRole('button', { name: 'Revoke trust', exact: true }),
   ).toBeVisible();
   await page.reload();
-  await expect(installed).toContainText('reviewed-ui-fixture · 1.1.0');
+  await expect(said('1.1.0')).toHaveAccessibleName('reviewed-ui-fixture 1.1.0');
   const entries = await (
     await page.request.get(new URL('/api/v1/harness/entries', page.url()).href)
   ).json();
@@ -156,11 +173,15 @@ test('reviewed packages install trusted, preserve plain text metadata, and keep 
     resourceHash: upgraded.resourceHash,
     entry: upgraded.entry,
   });
+  await said('1.0.0').click();
   await item.getByRole('button', { name: 'Remove', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(item.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
   await page.reload();
+  await expect(said('1.0.0')).toHaveAccessibleName('reviewed-ui-fixture 1.0.0 Removed');
   await item.getByRole('button', { name: 'Restore', exact: true }).click();
-  await expect(item.getByRole('button', { name: 'Enable', exact: true })).toBeVisible();
+  await expect(said('1.0.0')).toHaveAccessibleName('reviewed-ui-fixture 1.0.0 Disabled');
+  await said('1.0.0').click();
+  await expect(enabled).not.toBeChecked();
   await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toBeVisible();
 });
