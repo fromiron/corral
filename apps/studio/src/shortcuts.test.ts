@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { passesTyping, SHORTCUTS, shortcutFor, shortcutLabel } from './shortcuts.ts';
+import { passesTyping, SHORTCUTS, shortcutFor, shortcutKeys, shortcutLabel } from './shortcuts.ts';
 
 // Workbench polish P4: one shortcut table; what help shows is what the key handler matches.
 
@@ -88,5 +88,30 @@ describe('shortcut table', () => {
   it('gives every shortcut a distinct chord', () => {
     const chords = SHORTCUTS.map((s) => JSON.stringify(s.chord));
     expect(new Set(chords).size).toBe(chords.length);
+  });
+});
+
+describe('the keys of a shortcut, one per keycap', () => {
+  it('splits a chord at its plus signs and keeps a plus key whole', () => {
+    expect(shortcutKeys('Ctrl+Shift+P')).toEqual(['Ctrl', 'Shift', 'P']);
+    expect(shortcutKeys('Ctrl+1–9')).toEqual(['Ctrl', '1–9']);
+    expect(shortcutKeys('Ctrl++')).toEqual(['Ctrl', '+']);
+    expect(shortcutKeys('+')).toEqual(['+']);
+    expect(shortcutKeys('Enter')).toEqual(['Enter']);
+    expect(shortcutKeys('?')).toEqual(['?']);
+  });
+
+  it('takes a Mac chord glyph by glyph, which is written without plus signs', () => {
+    expect(shortcutKeys('⌘⇧P')).toEqual(['⌘', '⇧', 'P']);
+    expect(shortcutKeys('⌥Enter')).toEqual(['⌥', 'Enter']);
+    expect(shortcutKeys('⌘1–9')).toEqual(['⌘', '1–9']);
+    expect(shortcutKeys('↑')).toEqual(['↑']);
+  });
+
+  it('gives back every shortcut’s label when its keys are joined the way the label is written', () => {
+    for (const shortcut of SHORTCUTS) {
+      const label = shortcutLabel(shortcut.id);
+      if (label) expect(shortcutKeys(label).join('+')).toBe(label);
+    }
   });
 });
