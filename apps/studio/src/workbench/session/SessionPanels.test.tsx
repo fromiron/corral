@@ -217,6 +217,67 @@ const stateWord = (run: RunSummary) =>
     listedRunPresence(run).labelKey.split('.')[1] as keyof typeof messages.Presence.state
   ];
 
+
+const results = async (
+  byRun: Record<string, RunProjection>,
+  runs: RunSummary[],
+  nodes: { id: string; label: string }[] = [],
+) => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  fixture.services = {
+    transport: {
+      getSnapshot: async (runId: string) => ({ projection: byRun[runId] }),
+      getRunDefinition: async () => ({ nodes }),
+    },
+  };
+  const onOpen = vi.fn();
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ArtifactsPanel runs={runs} onOpen={onOpen} />
+      </IntlProvider>,
+    ),
+  );
+  await act(async () => {});
+  return { container, onOpen };
+};
+
+it('does not offer to open a final result an earlier run no longer keeps', async () => {
+  // A later run of the session succeeded, so the earlier run's final text was released
+  // (api-contract.md, 산출물 본문 수명).
+  const earlier: RunProjection = {
+    ...emptyProjection('run_1'),
+    status: 'succeeded',
+    artifacts: { old: { ...version('old', 'draft'), bodyAvailable: false } },
+    output: { nodeId: 'write', artifactVersionIds: ['old'] },
+  };
+  const later: RunProjection = {
+    ...emptyProjection('run_2'),
+    status: 'succeeded',
+    artifacts: { now: version('now', 'draft') },
+    output: { nodeId: 'write', artifactVersionIds: ['now'] },
+  };
+  const { container, onOpen } = await results({ run_1: earlier, run_2: later }, [
+    { runId: 'run_1', status: 'succeeded' } as RunSummary,
+    { runId: 'run_2', status: 'succeeded' } as RunSummary,
+  ]);
+  const rows = [...container.querySelectorAll('li')];
+  expect(rows).toHaveLength(2);
+  const [current, released] = rows;
+  expect(current?.querySelector('button')).not.toBeNull();
+  expect(current?.textContent).not.toContain('Text no longer kept');
+  expect(released?.querySelector('button')).toBeNull();
+  expect(released?.textContent).toContain('Text no longer kept');
+  expect(onOpen).not.toHaveBeenCalled();
+});
+
 it('tells above a past run that another run of the session goes, by its number and state', async () => {
   const view = await showRunPanel([past, going], going, { panel: 'run', run: 'run_past' });
   const line = view.line();

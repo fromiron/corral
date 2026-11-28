@@ -180,9 +180,9 @@ export function useRunNames(runs: readonly RunSummary[], entries: WorkSession['e
 }
 
 /**
- * Results use the same final/partial classification as the conversation. A partial result whose
- * text the run no longer keeps is listed as the run's Results view lists it: named, marked as no
- * longer kept, and not offered to open.
+ * Results use the same final/partial classification as the conversation. A result whose text is
+ * no longer kept, a final one a later run replaced included, is listed as the run's Results view
+ * lists it: named, marked as no longer kept, and not offered to open.
  */
 export function ArtifactsPanel({
   runs,
@@ -320,7 +320,7 @@ export function ArtifactsPanel({
             );
             return (
               <li key={`${item.runId}:${item.id}`}>
-                {item.kept || item.kind === 'final' ? (
+                {item.kept ? (
                   <Button
                     variant="ghost"
                     className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
