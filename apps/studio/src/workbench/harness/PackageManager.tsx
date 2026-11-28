@@ -528,9 +528,9 @@ function ReviewedCopy({ review }: { review: PackageReview }) {
   const t = useTranslations('Packages');
   return (
     <section className="flex flex-col gap-3" aria-label={t('reviewed')}>
-      <h4 style={{ fontVariationSettings: fontWeights.semibold }}>
+      <h3 style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('reviewed')} · {review.resource.name} · {review.resource.version}
-      </h4>
+      </h3>
       {review.previous ? (
         <p className="text-caption text-muted-foreground">
           {t('compare')}: {review.previous.name} · {review.previous.version}
@@ -542,9 +542,9 @@ function ReviewedCopy({ review }: { review: PackageReview }) {
           {(['added', 'changed', 'removed'] as const).map((kind) =>
             review.changes?.[kind].length ? (
               <div key={kind}>
-                <h5 style={{ fontVariationSettings: fontWeights.semibold }}>
+                <h4 style={{ fontVariationSettings: fontWeights.semibold }}>
                   {t(kind === 'removed' ? 'deleted' : kind)}
-                </h5>
+                </h4>
                 <ul className="max-h-40 overflow-auto font-mono">
                   {review.changes[kind].map((path) => (
                     <li key={path} className="break-all">
@@ -594,7 +594,7 @@ function PackageMetadata({
       </dl>
       {manifest?.mcpServers.length ? (
         <section aria-label={t('mcp')} className="text-caption">
-          <h5 style={{ fontVariationSettings: fontWeights.semibold }}>{t('mcp')}</h5>
+          <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t('mcp')}</h4>
           <ul className="mt-1 flex flex-col gap-1">
             {manifest.mcpServers.map((server) => (
               <li key={server.id}>
@@ -620,7 +620,7 @@ function PackageMetadata({
       ) : null}
       {manifest?.ui.map((detail) => (
         <section key={detail.id} className="text-caption">
-          <h5 style={{ fontVariationSettings: fontWeights.semibold }}>{detail.title}</h5>
+          <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{detail.title}</h4>
           <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
             {detail.body}
           </p>
