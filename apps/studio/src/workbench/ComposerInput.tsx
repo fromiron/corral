@@ -2,7 +2,16 @@
 // keyboard first, IME safe. The renderer only reads names; picking a file grants nothing.
 import { rankFuzzy } from '@corral/core';
 import { fontWeights, type InputMessageInputProps, Kbd } from '@corral/react/design-kit';
-import { Bot, File, FileText, Folder, History, type LucideIcon, Slash } from '@corral/react/icons';
+import {
+  Bot,
+  File,
+  FileText,
+  Folder,
+  History,
+  type LucideIcon,
+  RefreshCw,
+  Slash,
+} from '@corral/react/icons';
 import {
   type KeyboardEvent,
   type RefObject,
@@ -13,11 +22,13 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import type { AppCommand } from '../commandRegistry.ts';
 import {
   type MentionItem,
   type MentionKind,
+  type MentionSearch,
+  type MentionSource,
   type MenuPlacement,
   mentionToken,
   menuPlacement,
@@ -39,6 +50,12 @@ const ICON: Record<MentionKind, LucideIcon> = {
 type Row =
   | { kind: 'command'; id: string; command: AppCommand }
   | { kind: 'mention'; id: string; item: MentionItem };
+interface RetryRow {
+  kind: 'retry';
+  id: 'retry';
+  unread: MentionSource[];
+}
+const SOURCES: MentionSource[] = ['files', 'results', 'roles'];
 
 export function ComposerInput({
   value,
@@ -64,7 +81,7 @@ export function ComposerInput({
   /** One of the three send keys was pressed (features/composer-flow.md "전송"). */
   onSend: (role: 'send' | 'interrupt' | 'queue') => void;
   commands: AppCommand[];
-  searchMentions: (query: string) => Promise<MentionItem[]>;
+  searchMentions: (query: string) => Promise<MentionSearch>;
   onMention: (item: MentionItem) => MentionItem;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   placeholder: string;
@@ -78,12 +95,14 @@ export function ComposerInput({
   menus?: boolean;
 }) {
   const t = useTranslations('Composer');
+  const format = useFormatter();
   const listId = useId();
   const [caret, setCaret] = useState(value.length);
   const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
-  const [mentions, setMentions] = useState<{ query: string; items: MentionItem[] } | null>(null);
+  const [mentions, setMentions] = useState<({ query: string } & MentionSearch) | null>(null);
+  const [attempt, setAttempt] = useState(0);
   // An IME composition owns every key until it ends, whether or not a key says so itself.
   const composing = useRef(false);
   const trigger: Trigger | null =
@@ -97,16 +116,17 @@ export function ComposerInput({
     const timer = setTimeout(
       () =>
         void searchMentions(query).then(
-          (items) => live && setMentions({ query, items }),
-          () => live && setMentions({ query, items: [] }),
+          (found) => live && setMentions({ query, ...found }),
+          () => live && setMentions({ query, items: [], unread: [...SOURCES] }),
         ),
       query ? 80 : 0,
     );
+    void attempt;
     return () => {
       live = false;
       clearTimeout(timer);
     };
-  }, [kind, query, searchMentions]);
+  }, [kind, query, searchMentions, attempt]);
 
   const available = commands.filter((c) => c.slash && !c.disabled);
   // A command whose name starts with what was typed comes first; then fuzzy matches.
@@ -127,11 +147,16 @@ export function ComposerInput({
           .slice(0, 12)
           .map((command) => ({ kind: 'command', id: command.id, command }))
       : kind === 'mention' && mentions
-        ? mentions.items.map((item) => ({ kind: 'mention', id: item.id, item }))
+        ? [...mentions.items.map((item): Row => ({ kind: 'mention', id: item.id, item }))]
         : [];
+  const retry: RetryRow | null =
+    kind === 'mention' && mentions?.unread.length
+      ? { kind: 'retry', id: 'retry', unread: mentions.unread }
+      : null;
+  const count = rows.length + (retry ? 1 : 0);
   const open = kind !== null && (kind === 'slash' || mentions !== null);
   const typedCommand = menus ? valueCommand(value, commands) : null;
-  const selected = Math.min(index, Math.max(0, rows.length - 1));
+  const selected = Math.min(index, Math.max(0, count - 1));
   const anchor = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<MenuPlacement | null>(null);
 
@@ -179,8 +204,12 @@ export function ComposerInput({
       setCaret(next.caret);
     });
   };
-  const choose = (row: Row | undefined) => {
+  const choose = (row: Row | RetryRow | undefined) => {
     if (!row || !trigger) return;
+    if (row.kind === 'retry') {
+      setAttempt((count) => count + 1);
+      return;
+    }
     if (row.kind === 'command') {
       if (row.command.disabled) return;
       // A command replaces what was typed for it; the rest of the request stays.
@@ -206,7 +235,7 @@ export function ComposerInput({
     grouped.set(title, [...(grouped.get(title) ?? []), row]);
   }
   const groups = [...grouped].map(([title, list]) => ({ title, rows: list }));
-  const ordered = groups.flatMap((g) => g.rows);
+  const ordered = [...groups.flatMap((g) => g.rows), ...(retry ? [retry] : [])];
   let position = -1;
 
   return (
@@ -220,7 +249,7 @@ export function ComposerInput({
               style={placement}
               className="dropdown-glass z-[130] overflow-auto rounded-xl p-1 shadow-popup"
             >
-              {rows.length === 0 ? (
+              {count === 0 ? (
                 <p className="px-2 py-1.5 text-caption text-muted-foreground">
                   {kind === 'slash' ? t('noCommand') : t('noReference')}
                 </p>
@@ -283,6 +312,33 @@ export function ComposerInput({
                   })}
                 </div>
               ))}
+              {retry ? (
+                <div
+                  id={`${listId}-${count - 1}`}
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={selected === count - 1}
+                  onMouseMove={() => setIndex(count - 1)}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    choose(retry);
+                  }}
+                  className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-caption ${selected === count - 1 ? 'bg-subtle' : ''}`}
+                >
+                  <RefreshCw className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    {t('unreadLine', {
+                      what: format.list(retry.unread.map((source) => t(`unread.${source}`))),
+                    })}
+                  </span>{' '}
+                  <span
+                    className="shrink-0"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {t('readAgain')}
+                  </span>
+                </div>
+              ) : null}
             </div>,
             document.body,
           )
@@ -297,7 +353,7 @@ export function ComposerInput({
               'aria-expanded': open,
               'aria-autocomplete': 'list' as const,
               'aria-controls': open ? listId : undefined,
-              'aria-activedescendant': open && rows.length ? `${listId}-${selected}` : undefined,
+              'aria-activedescendant': open && count ? `${listId}-${selected}` : undefined,
             }
           : {})}
         value={value}
@@ -322,9 +378,9 @@ export function ComposerInput({
         onKeyDown={(e) => {
           if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
           if (open && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && rows.length) {
+            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && count) {
               e.preventDefault();
-              setIndex((selected + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length);
+              setIndex((selected + (e.key === 'ArrowDown' ? 1 : -1) + count) % count);
               return;
             }
             if (e.key === 'Escape') {
@@ -336,7 +392,7 @@ export function ComposerInput({
             if (
               (e.key === 'Enter' || e.key === 'Tab') &&
               !e.shiftKey &&
-              rows.length &&
+              count &&
               !(e.key === 'Enter' && typedCommand && sendKeyRole(e, sendKey))
             ) {
               e.preventDefault();

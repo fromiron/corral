@@ -64,7 +64,7 @@ it.each([false, true])(
         getRunDefinition: async () => ({ nodes: [{ id: 'helper', label: 'Researcher' }] }),
       },
     };
-    let search!: (query: string) => Promise<MentionItem[]>;
+    let search!: ReturnType<typeof useMentionSearch>;
     function Harness() {
       search = useMentionSearch({ projectId: 'project', sessionId: 'session', runs, team: null });
       return null;
@@ -82,7 +82,7 @@ it.each([false, true])(
         </IntlProvider>,
       ),
     );
-    const items = await search('');
+    const { items } = await search('');
     const results: MentionItem[] = [];
     for (const item of items.filter((item) => item.kind === 'result'))
       results.push(selectMention(item, results));
@@ -136,7 +136,7 @@ it('reads the target again after a failed read, and never searches the source fo
     repository: {},
     transport: {},
   };
-  let search!: (query: string) => Promise<MentionItem[]>;
+  let search!: ReturnType<typeof useMentionSearch>;
   function Harness() {
     search = useMentionSearch({ projectId: 'project', sessionId: 'session', runs: [], team: null });
     return null;
@@ -154,10 +154,69 @@ it('reads the target again after a failed read, and never searches the source fo
     ),
   );
   const first = await search('a');
-  expect(first.filter((item) => item.kind === 'file')).toEqual([]);
+  expect(first.items.filter((item) => item.kind === 'file')).toEqual([]);
+  expect(first.unread).toEqual(['files']);
   expect(binding).not.toHaveBeenCalled();
   expect(searchFiles).not.toHaveBeenCalled();
   const second = await search('a');
   expect(searchFiles).toHaveBeenCalledWith({ kind: 'session', id: 'session' }, 'a', 8);
-  expect(second.map((item) => item.label)).toContain('src/a.ts');
+  expect(second.items.map((item) => item.label)).toContain('src/a.ts');
+  expect(second.unread).toEqual([]);
+});
+
+// A read that failed is not kept as "nothing there": each is said, and read again by the next search.
+it('says which lookups failed (the file search, a run’s results, the team’s roles) and reads each again', async () => {
+  const searchFiles = vi
+    .fn<() => Promise<unknown>>()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue({ items: [{ path: 'src/a.ts', kind: 'file' }], truncated: false });
+  const getSnapshot = vi
+    .fn<(runId: string) => Promise<unknown>>()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockImplementation(async (runId) => {
+      const projection = emptyProjection(runId);
+      projection.status = 'succeeded';
+      return { projection };
+    });
+  const get = vi
+    .fn<() => Promise<unknown>>()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue({ definition: { roles: [{ id: 'writer', name: 'Writer' }] } });
+  fixture.services = {
+    workspaces: {
+      worktree: async () => ({ missing: false, removedAt: null }),
+      binding: async () => ({ projectId: 'project' }),
+      searchFiles,
+    },
+    repository: { get },
+    transport: { getSnapshot, getRunDefinition: async () => null },
+  };
+  const runs = [{ runId: 'run', status: 'succeeded' } as RunSummary];
+  const team = { corralId: 'team', definitionRevision: 1 } as never;
+  let search!: ReturnType<typeof useMentionSearch>;
+  function Harness() {
+    search = useMentionSearch({ projectId: 'project', sessionId: 'session', runs, team });
+    return null;
+  }
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const root = createRoot(document.createElement('div'));
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <Harness />
+      </IntlProvider>,
+    ),
+  );
+  const first = await search('');
+  expect(first.unread).toEqual(['files', 'results', 'roles']);
+  // What was read is still offered: the run itself comes from the list already in hand.
+  expect(first.items.map((item) => item.label)).toEqual(['Run #1']);
+  const second = await search('');
+  expect(second.unread).toEqual([]);
+  expect(getSnapshot).toHaveBeenCalledTimes(2);
+  expect(get).toHaveBeenCalledTimes(2);
+  expect(second.items.map((item) => item.label)).toEqual(['src/a.ts', 'Run #1', 'Writer']);
 });

@@ -18,6 +18,13 @@ export interface MentionItem {
   reference: RunReference;
 }
 
+export type MentionSource = 'files' | 'results' | 'roles';
+
+export interface MentionSearch {
+  items: MentionItem[];
+  unread: MentionSource[];
+}
+
 export interface Trigger {
   kind: 'slash' | 'mention';
   query: string;

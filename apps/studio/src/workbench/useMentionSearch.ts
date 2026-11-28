@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
 import { useServices } from '../services.tsx';
-import type { MentionItem } from './composerMenu.ts';
+import type { MentionItem, MentionSearch, MentionSource } from './composerMenu.ts';
 
 // what `@` can point at in a session: files and folders of its working copy (or the
 // linked folder before there is one), results of its runs at a fixed version, its runs, and
@@ -43,10 +43,11 @@ export function useMentionSearch({
   const runsKey = runs.map((r) => `${r.runId}:${r.status}`).join(',');
 
   return useCallback(
-    async (query: string): Promise<MentionItem[]> => {
+    async (query: string): Promise<MentionSearch> => {
       const ordered = [...latestRuns.current];
       const number = (runId: string) => ordered.findIndex((r) => r.runId === runId) + 1;
       const out: MentionItem[] = [];
+      const unread: MentionSource[] = [];
       if (workspaces) {
         scope.current ??= (async () => {
           const copy = await workspaces.worktree(sessionId);
@@ -57,10 +58,14 @@ export function useMentionSearch({
         const reading = scope.current;
         const where = await reading.catch(() => {
           if (scope.current === reading) scope.current = null;
+          unread.push('files');
           return null;
         });
         if (where) {
-          const found = await workspaces.searchFiles(where, query, 8).catch(() => null);
+          const found = await workspaces.searchFiles(where, query, 8).catch(() => {
+            unread.push('files');
+            return null;
+          });
           for (const item of found?.items ?? [])
             out.push({
               id: `${item.kind}:${item.path}`,
@@ -112,9 +117,15 @@ export function useMentionSearch({
               }
             }
             return items;
-          })().catch(() => []),
+          })(),
         };
-      out.push(...rankFuzzy(query, await results.current.items, (i) => i.label, 5));
+      const readResults = results.current;
+      const resultItems = await readResults.items.catch(() => {
+        if (results.current === readResults) results.current = null;
+        unread.push('results');
+        return [];
+      });
+      out.push(...rankFuzzy(query, resultItems, (i) => i.label, 5));
       const runItems: MentionItem[] = [...ordered].reverse().map((run) => ({
         id: `run:${run.runId}`,
         kind: 'run',
@@ -137,12 +148,17 @@ export function useMentionSearch({
                     detail: role.id,
                     reference: { kind: 'role' as const, roleId: role.id },
                   })) ?? [],
-                () => [],
               )
             : Promise.resolve([]),
         };
-      out.push(...rankFuzzy(query, await roles.current.items, (i) => `${i.label} ${i.detail}`, 4));
-      return out;
+      const readRoles = roles.current;
+      const roleItems = await readRoles.items.catch(() => {
+        if (roles.current === readRoles) roles.current = null;
+        unread.push('roles');
+        return [];
+      });
+      out.push(...rankFuzzy(query, roleItems, (i) => `${i.label} ${i.detail}`, 4));
+      return { items: out, unread };
     },
     [workspaces, transport, repository, projectId, sessionId, runsKey, team, ts, tw, tr],
   );

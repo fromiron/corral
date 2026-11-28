@@ -4,7 +4,7 @@ import type { AppCommand } from '../../../commandRegistry.ts';
 import { sendKeyLabel } from '../../../shortcuts.ts';
 import { ComposerInput } from '../../ComposerInput.tsx';
 import type { SendKeyRole } from '../../composerIntent.ts';
-import type { MentionItem } from '../../composerMenu.ts';
+import type { MentionItem, MentionSearch } from '../../composerMenu.ts';
 import type { Preferences } from '../../preferences.ts';
 import { KeyHint, type KeyMeaning, type SendRow } from './SendControls.tsx';
 
@@ -40,7 +40,7 @@ export interface SendTarget {
 /** The input's `/` command and `@` reference menu, where the place offers them. */
 export interface ComposerMenus {
   commands: AppCommand[];
-  searchMentions: (query: string) => Promise<MentionItem[]>;
+  searchMentions: (query: string) => Promise<MentionSearch>;
   onMention: (item: MentionItem) => MentionItem;
 }
 
@@ -63,7 +63,7 @@ export const stopsSendPlace = (stoppable: boolean, text: string) => stoppable &&
 export const sendPlaceStop = (stop: ComposerStop | null | undefined, text: string) =>
   stop && stopsSendPlace(true, text) ? stop : null;
 
-const noMentions = async () => [];
+const noMentions = async (): Promise<MentionSearch> => ({ items: [], unread: [] });
 const same = (item: MentionItem) => item;
 
 export function ComposerCard({

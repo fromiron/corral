@@ -2846,6 +2846,13 @@
     "references": "References",
     "noCommand": "No matching command.",
     "noReference": "No matching files, folders, results, runs or roles.",
+    "unreadLine": "Could not read {what}.",
+    "unread": {
+      "files": "files and folders",
+      "results": "results",
+      "roles": "roles"
+    },
+    "readAgain": "Try again",
     "group": {
       "file": "Files",
       "folder": "Folders",

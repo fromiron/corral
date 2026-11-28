@@ -2846,6 +2846,13 @@
     "references": "참조",
     "noCommand": "맞는 명령이 없습니다.",
     "noReference": "맞는 파일·폴더·결과·실행·역할이 없습니다.",
+    "unreadLine": "읽지 못했습니다: {what}",
+    "unread": {
+      "files": "파일·폴더",
+      "results": "결과",
+      "roles": "역할"
+    },
+    "readAgain": "다시 시도",
     "group": {
       "file": "파일",
       "folder": "폴더",

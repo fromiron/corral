@@ -25,7 +25,7 @@ it('closes reference suggestions when focus leaves the request for a reference c
             sendKey="enter"
             onSend={() => {}}
             commands={[]}
-            searchMentions={async () => []}
+            searchMentions={async () => ({ items: [], unread: [] })}
             onMention={(item) => item}
             inputRef={input}
             placeholder="Request"
@@ -53,6 +53,121 @@ it('closes reference suggestions when focus leaves the request for a reference c
   }
 });
 
+// features/file-search.md: a lookup `@` could not read is said in the list's last line, which is
+// chosen like any other line and reads again with the same words.
+async function references(
+  searchMentions: (query: string) => Promise<{
+    items: { id: string; kind: 'run'; label: string; reference: { kind: 'run'; runId: string } }[];
+    unread: ('files' | 'results' | 'roles')[];
+  }>,
+) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.useFakeTimers();
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const input = createRef<HTMLTextAreaElement>();
+  const onChange = vi.fn();
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages}>
+        <ComposerInput
+          value="@re"
+          onChange={onChange}
+          onKeyDown={() => {}}
+          sendKey="enter"
+          onSend={() => {}}
+          commands={[]}
+          searchMentions={searchMentions}
+          onMention={(item) => item}
+          inputRef={input}
+          placeholder="Request"
+          label="Request"
+        />
+      </IntlProvider>,
+    ),
+  );
+  await act(async () => {
+    input.current?.focus();
+    input.current?.setSelectionRange(3, 3);
+    input.current?.dispatchEvent(new KeyboardEvent('keyup', { key: 'e', bubbles: true }));
+  });
+  await act(async () => vi.advanceTimersByTimeAsync(80));
+  const key = (name: string) =>
+    act(async () => {
+      input.current?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }),
+      );
+      await vi.advanceTimersByTimeAsync(80);
+    });
+  const options = () =>
+    [...document.querySelectorAll('[role="listbox"] [role="option"]')].map((option) =>
+      option.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+  const chosen = () =>
+    document
+      .getElementById(input.current?.getAttribute('aria-activedescendant') ?? '')
+      ?.textContent?.replace(/\s+/g, ' ')
+      .trim();
+  return {
+    input,
+    onChange,
+    key,
+    options,
+    chosen,
+    list: () => document.querySelector('[role="listbox"]')?.textContent ?? '',
+    close: async () => {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    },
+  };
+}
+
+it('says what `@` could not read instead of “no match”, and its line reads again with the same words', async () => {
+  const search = vi
+    .fn<Parameters<typeof references>[0]>()
+    .mockResolvedValueOnce({ items: [], unread: ['files', 'results'] })
+    .mockResolvedValue({ items: [], unread: [] });
+  const menu = await references(search);
+  try {
+    expect(menu.list()).not.toContain(messages.Composer.noReference);
+    expect(menu.options()).toEqual(['Could not read files and folders and results. Try again']);
+    expect(menu.chosen()).toBe('Could not read files and folders and results. Try again');
+
+    await menu.key('Enter');
+
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(search).toHaveBeenLastCalledWith('re');
+    // Reading again is not choosing a reference: the request's words are as they were.
+    expect(menu.onChange).not.toHaveBeenCalled();
+    expect(menu.options()).toEqual([]);
+    expect(menu.list()).toContain(messages.Composer.noReference);
+  } finally {
+    await menu.close();
+  }
+});
+
+it('keeps what `@` did read and puts the unread line last, reached by the arrow keys', async () => {
+  const run = {
+    id: 'run:1',
+    kind: 'run' as const,
+    label: 'Run #1',
+    reference: { kind: 'run' as const, runId: '1' },
+  };
+  const search = vi.fn(async () => ({ items: [run], unread: ['roles' as const] }));
+  const menu = await references(search);
+  try {
+    expect(menu.options()).toEqual(['Run #1', 'Could not read roles. Try again']);
+    expect(menu.chosen()).toBe('Run #1');
+    await menu.key('ArrowUp');
+    expect(menu.chosen()).toBe('Could not read roles. Try again');
+  } finally {
+    await menu.close();
+  }
+});
+
 // features/composer-flow.md "전송": the send key, the interrupt key and Alt+Enter, by the send
 // key the person chose; an IME composition never sends.
 async function keyed(sendKey: 'enter' | 'mod-enter') {
@@ -73,7 +188,7 @@ async function keyed(sendKey: 'enter' | 'mod-enter') {
           sendKey={sendKey}
           onSend={onSend}
           commands={[]}
-          searchMentions={async () => []}
+          searchMentions={async () => ({ items: [], unread: [] })}
           onMention={(item) => item}
           inputRef={input}
           placeholder="Request"
@@ -179,7 +294,7 @@ async function withCommands(sendKey: 'enter' | 'mod-enter', initial: string) {
           sendKey={sendKey}
           onSend={onSend}
           commands={commands}
-          searchMentions={async () => []}
+          searchMentions={async () => ({ items: [], unread: [] })}
           onMention={(item) => item}
           inputRef={input}
           placeholder="Request"
