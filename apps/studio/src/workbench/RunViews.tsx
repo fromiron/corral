@@ -1,4 +1,11 @@
-import { TabItem, TabPanel, Tabs, TabsList } from '@corral/react/design-kit';
+import {
+  TabItem,
+  TabPanel,
+  Tabs,
+  TabsList,
+  tabStripItem,
+  tabStripList,
+} from '@corral/react/design-kit';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -67,17 +74,13 @@ export function RunViews({
         data-run-view-row=""
         className="@container/run-views flex shrink-0 items-center gap-2 border-b border-line px-4 py-2"
       >
-        {/* Narrow, the strip scrolls inside itself, by touch and as arrow keys move focus,
-            and the kit's edge fade shows there is more beyond the cut. */}
-        <TabsList
-          aria-label={t('views')}
-          className="scroll-fade-x scrollbar-hide min-w-0 max-w-full overflow-x-auto"
-        >
+        <TabsList aria-label={t('views')} className={tabStripList}>
           {views.map((view) => (
             <TabItem
               key={view.id}
               value={view.id}
               label={view.label}
+              className={tabStripItem}
               // The view shown as chosen while reading is not a change of value; it still
               // leaves the document.
               {...(view.id === readingView ? { onClick: () => choose(view.id) } : {})}
