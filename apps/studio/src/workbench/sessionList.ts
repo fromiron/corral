@@ -94,20 +94,20 @@ export function uncertainSessionTerminal(sessionId: string, items: readonly Sess
 }
 
 /**
- * The sidebar's Needs you badge: listed sessions whose newest run waits for the person, plus
- * terminals whose result needs checking. Queued requests and unreviewed files stay in the list
- * only (docs/specs/features/inbox.md). It reads the live runs: the exit grace never delays it.
+ * The sidebar's Needs you badge: every run of a listed session that waits for the person, newest
+ * or not, plus terminals whose result needs checking. Queued requests and unreviewed files stay
+ * in the list only (docs/specs/features/inbox.md). It reads the live runs: no exit grace delays it.
  */
 export function needsYouCount(
   sessions: readonly WorkSession[],
   runs: RunSummary[],
   attention: readonly SessionAttention[],
 ) {
-  const latest = latestRunsBySession(runs);
-  const waiting = sessions.filter((session) => {
-    const run = latest.get(session.sessionId);
-    return run ? listedRunPresence(run).kind === 'awaiting_user' : false;
-  }).length;
+  const listed = new Set(sessions.map((session) => session.sessionId));
+  const waiting = runs.filter(
+    (run) =>
+      run.sessionId && listed.has(run.sessionId) && listedRunPresence(run).kind === 'awaiting_user',
+  ).length;
   return waiting + attention.filter((item) => item.kind === 'uncertain_terminal').length;
 }
 
