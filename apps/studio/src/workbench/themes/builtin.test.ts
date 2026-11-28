@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_THEMES } from './builtin.ts';
-import { contrastRatio } from './color.ts';
+import { contrastRatio, mix } from './color.ts';
 import { checkPalette, parseTheme, serializeTheme } from './json.ts';
 import { paletteTokens } from './tokens.ts';
 
@@ -86,6 +86,31 @@ const ANSI = [
 
 const notice = readFileSync(join(root, 'THIRD-PARTY-NOTICES/themes.md'), 'utf8');
 
+/**
+ * The kit's overlays for a pointed-at and a chosen row, read from its token file: the color and
+ * the strength per base. A theme that writes none of its own is drawn with these.
+ */
+const kitTokens = readFileSync(join(root, 'packages/react/src/design-kit/tokens.css'), 'utf8');
+type Overlay = { color: string; amount: number };
+function overlayOf(value: string): Overlay {
+  const [red, green, blue, amount] = (/^rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)$/.exec(value) ?? [])
+    .slice(1)
+    .map(Number);
+  if (amount === undefined) throw new Error(`not an overlay: ${value}`);
+  return {
+    color: `#${[red, green, blue].map((channel) => (channel as number).toString(16).padStart(2, '0')).join('')}`,
+    amount,
+  };
+}
+function kitOverlay(name: '--hover' | '--active', base: 'light' | 'dark'): Overlay {
+  const pair = new RegExp(`${name}: light-dark\\((rgb\\([^)]+\\)), (rgb\\([^)]+\\))\\);`).exec(
+    kitTokens,
+  );
+  if (!pair) throw new Error(`${name} is not a light-dark pair in the kit's tokens`);
+  return overlayOf(pair[base === 'light' ? 1 : 2] as string);
+}
+const ROW_OVERLAYS = ['--hover', '--active'] as const;
+
 describe('built-in themes', () => {
   it('ships six to nine distinct, valid themes', () => {
     expect(BUILTIN_THEMES.length).toBeGreaterThanOrEqual(6);
@@ -134,6 +159,45 @@ describe('built-in themes', () => {
         expect(
           contrastRatio(tokens['--focus-ring'] as string, tokens['--surface-1'] as string),
         ).toBeGreaterThanOrEqual(3);
+      });
+
+      const row = (surface: string, name: (typeof ROW_OVERLAYS)[number]) => {
+        const written = tokens[name];
+        const overlay = written ? overlayOf(written) : kitOverlay(name, theme.palette.base);
+        return mix(surface, overlay.color, overlay.amount);
+      };
+
+      it('keeps text at 4.5:1 on a pointed-at or chosen row on surfaces 1 to 8', () => {
+        for (const name of ROW_OVERLAYS)
+          for (const [index, surface] of surfaces.entries())
+            expect(
+              contrastRatio(tokens['--foreground'] as string, row(surface, name)),
+              `${name} on surface ${index + 1}`,
+            ).toBeGreaterThanOrEqual(4.5);
+      });
+
+      it('keeps secondary text at 4.5:1 on a pointed-at or chosen row on the floor, a panel and a card', () => {
+        for (const name of ROW_OVERLAYS)
+          for (const [index, surface] of surfaces.slice(0, 3).entries())
+            expect(
+              contrastRatio(tokens['--muted-foreground'] as string, row(surface, name)),
+              `${name} on surface ${index + 1}`,
+            ).toBeGreaterThanOrEqual(4.5);
+      });
+
+      it("lays the row overlays no stronger than the kit, in the kit's proportion, and a light theme at the kit's strength", () => {
+        const kit = {
+          hover: kitOverlay('--hover', theme.palette.base),
+          active: kitOverlay('--active', theme.palette.base),
+        };
+        const hover = overlayOf(tokens['--hover'] as string);
+        const active = overlayOf(tokens['--active'] as string);
+        expect(hover.color).toBe(kit.hover.color);
+        expect(active.color).toBe(kit.active.color);
+        expect(active.amount).toBeLessThanOrEqual(kit.active.amount);
+        expect(active.amount).toBeGreaterThanOrEqual(0.03);
+        expect(hover.amount / active.amount).toBeCloseTo(kit.hover.amount / kit.active.amount, 1);
+        if (theme.palette.base === 'light') expect(active.amount).toBe(kit.active.amount);
       });
 
       it.each(['--accent', '--tint', '--tint-hover'])(

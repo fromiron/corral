@@ -6,7 +6,7 @@ import { createTranslator, IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../packages/react/src/messages/ko.json' with { type: 'json' };
-import { Palette } from './CommandPalette.tsx';
+import { Palette, ShortcutTable } from './CommandPalette.tsx';
 import { setCommands } from './commandRegistry.ts';
 import { composerCommands } from './workbench/session/composer/commands.ts';
 
@@ -361,4 +361,85 @@ it('closes on Escape from any control inside it, not only from the search field'
     );
   });
   expect(onClose).toHaveBeenCalled();
+});
+
+// workbench.md 명령 팔레트: a shortcut is drawn one keycap per key, and the row still reads as before.
+it('draws a command’s shortcut one keycap per key, with the plus signs still in the row’s words', async () => {
+  setCommands('keycaps', [
+    {
+      id: 'keycaps.one',
+      title: 'Fold everything',
+      group: 'View',
+      shortcut: 'Ctrl+Shift+F',
+      run() {},
+    },
+  ]);
+  try {
+    const container = await mount();
+    const row = [...container.querySelectorAll<HTMLElement>('[role="option"]')].find((option) =>
+      option.textContent?.includes('Fold everything'),
+    );
+    if (!row) throw new Error('Missing the command row');
+    expect([...row.querySelectorAll('kbd')].map((key) => key.textContent)).toEqual([
+      'Ctrl',
+      'Shift',
+      'F',
+    ]);
+    expect(row.textContent).toContain('Ctrl+Shift+F');
+  } finally {
+    setCommands('keycaps', null);
+  }
+});
+
+it('draws a Mac shortcut without plus signs, even when its key is the plus key', async () => {
+  setCommands('keycaps', [
+    { id: 'keycaps.mac', title: 'Zoom in', group: 'View', shortcut: '⌘⇧+', run() {} },
+  ]);
+  try {
+    const container = await mount();
+    const row = [...container.querySelectorAll<HTMLElement>('[role="option"]')].find((option) =>
+      option.textContent?.includes('Zoom in'),
+    );
+    if (!row) throw new Error('Missing the command row');
+    const keys = row.querySelector('kbd')?.parentElement;
+    expect([...(keys?.querySelectorAll('kbd') ?? [])].map((key) => key.textContent)).toEqual([
+      '⌘',
+      '⇧',
+      '+',
+    ]);
+    expect(keys?.textContent).toBe('⌘⇧+');
+  } finally {
+    setCommands('keycaps', null);
+  }
+});
+
+it('lists shortcuts with a keycap per key, and names a key button by the keys it shows', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () => {
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ShortcutTable editable />
+      </IntlProvider>,
+    );
+  });
+  const cells = [...container.querySelectorAll<HTMLElement>('dd')];
+  expect(cells.length).toBeGreaterThan(10);
+  for (const cell of cells) {
+    const caps = [...cell.querySelectorAll('kbd')].map((key) => key.textContent);
+    expect(caps.length, cell.textContent ?? '').toBeGreaterThan(0);
+    for (const cap of caps) expect(cap === '+' || !cap?.includes('+'), cap ?? '').toBe(true);
+    expect(caps.join(cell.textContent?.includes('+') && caps.length > 1 ? '+' : '')).toBe(
+      cell.textContent,
+    );
+  }
+  const buttons = [...container.querySelectorAll<HTMLButtonElement>('dd button')];
+  expect(buttons.length).toBeGreaterThan(5);
+  for (const button of buttons)
+    expect(button.getAttribute('aria-label')?.startsWith(`${button.textContent}, `)).toBe(true);
 });

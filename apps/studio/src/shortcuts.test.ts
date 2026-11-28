@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { passesTyping, SHORTCUTS, shortcutFor, shortcutLabel } from './shortcuts.ts';
+import { passesTyping, SHORTCUTS, shortcutFor, shortcutKeys, shortcutLabel } from './shortcuts.ts';
 
 // Workbench polish P4: one shortcut table; what help shows is what the key handler matches.
 
@@ -88,5 +88,44 @@ describe('shortcut table', () => {
   it('gives every shortcut a distinct chord', () => {
     const chords = SHORTCUTS.map((s) => JSON.stringify(s.chord));
     expect(new Set(chords).size).toBe(chords.length);
+  });
+});
+
+describe('the keys of a shortcut, one per keycap', () => {
+  const keysOf = (label: string) => shortcutKeys(label).keys;
+
+  it('splits a chord at its plus signs and keeps a plus key whole', () => {
+    expect(keysOf('Ctrl+Shift+P')).toEqual(['Ctrl', 'Shift', 'P']);
+    expect(keysOf('Ctrl+1–9')).toEqual(['Ctrl', '1–9']);
+    expect(keysOf('Ctrl++')).toEqual(['Ctrl', '+']);
+    expect(keysOf('+')).toEqual(['+']);
+    expect(keysOf('Enter')).toEqual(['Enter']);
+    expect(keysOf('?')).toEqual(['?']);
+  });
+
+  it('takes a Mac chord glyph by glyph, which is written without plus signs', () => {
+    expect(keysOf('⌘⇧P')).toEqual(['⌘', '⇧', 'P']);
+    expect(keysOf('⌥Enter')).toEqual(['⌥', 'Enter']);
+    expect(keysOf('⌘1–9')).toEqual(['⌘', '1–9']);
+    expect(keysOf('⌘⇧+')).toEqual(['⌘', '⇧', '+']);
+    expect(keysOf('↑')).toEqual(['↑']);
+  });
+
+  it('says what stands between the keys: a plus sign, and nothing in a Mac chord', () => {
+    for (const label of ['Ctrl+Shift+P', 'Ctrl++', '⌘⇧P', '⌘⇧+', '⌘+', '⌥Enter', '+', 'Enter']) {
+      const { keys, joiner } = shortcutKeys(label);
+      expect(keys.join(joiner)).toBe(label);
+    }
+    expect(shortcutKeys('Ctrl++').joiner).toBe('+');
+    expect(shortcutKeys('⌘+').joiner).toBe('');
+  });
+
+  it('gives back every shortcut’s label when its keys are joined the way the label is written', () => {
+    for (const shortcut of SHORTCUTS) {
+      const label = shortcutLabel(shortcut.id);
+      if (!label) continue;
+      const { keys, joiner } = shortcutKeys(label);
+      expect(keys.join(joiner)).toBe(label);
+    }
   });
 });

@@ -132,6 +132,18 @@ export function formatChord(chord: Chord): string {
   return parts.join(mac ? '' : '+');
 }
 
+const MAC_MODIFIER = /^[⌘⌥⇧⌃]/u;
+
+export function shortcutKeys(label: string): { keys: string[]; joiner: '' | '+' } {
+  const glyphs = [...label];
+  const modifiers = glyphs.findIndex((glyph) => !MAC_MODIFIER.test(glyph));
+  if (modifiers < 0) return { keys: glyphs, joiner: '' };
+  if (modifiers > 0)
+    return { keys: [...glyphs.slice(0, modifiers), glyphs.slice(modifiers).join('')], joiner: '' };
+  const keys = label.split('+');
+  return { keys: label.endsWith('+') ? [...keys.slice(0, -2), '+'] : keys, joiner: '+' };
+}
+
 /** What a tooltip or menu shows for a shortcut here, or undefined when it has none here. */
 export function shortcutLabel(id: ShortcutId): string | undefined {
   const chord = chordOf(id);

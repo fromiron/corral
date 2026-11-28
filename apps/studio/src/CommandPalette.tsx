@@ -17,9 +17,11 @@ import {
   DialogTitle,
   fontWeights,
   Kbd,
+  Keycap,
 } from '@corral/react/design-kit';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
+  Fragment,
   type KeyboardEvent,
   type RefObject,
   useCallback,
@@ -56,6 +58,7 @@ import {
   SHORTCUTS,
   type ShortcutId,
   shortcutFor,
+  shortcutKeys,
   shortcutLabel,
 } from './shortcuts.ts';
 import { WORKSPACE_TEMPLATES } from './templates.ts';
@@ -770,7 +773,7 @@ export function Palette({
                     /{command.slash}
                   </span>
                 ) : null}
-                {command?.shortcut ? <Kbd>{command.shortcut}</Kbd> : null}
+                {command?.shortcut ? <ShortcutKeys label={command.shortcut} /> : null}
               </CommandMenuItem>
             );
           }}
@@ -788,6 +791,20 @@ export function Palette({
         ) : null}
       </CommandMenu>
     </CommandMenuDialog>
+  );
+}
+
+function ShortcutKeys({ label }: { label: string }) {
+  const { keys, joiner } = shortcutKeys(label);
+  return (
+    <span className="inline-flex shrink-0 items-center gap-0.5 text-micro text-muted-foreground">
+      {keys.map((key, index) => (
+        <Fragment key={key}>
+          {index ? joiner : null}
+          <Keycap>{key}</Keycap>
+        </Fragment>
+      ))}
+    </span>
   );
 }
 
@@ -966,10 +983,12 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
                         capture === id ? (event) => record(event, id as ShortcutId) : undefined
                       }
                     >
-                      <Kbd>{capture === id ? t('capture') : keys}</Kbd>
+                      {capture === id ? <Kbd>{t('capture')}</Kbd> : <ShortcutKeys label={keys} />}
                     </Button>
                   ) : (
-                    <Kbd>{keys}</Kbd>
+                    <span className="inline-flex h-7 items-center px-3">
+                      <ShortcutKeys label={keys} />
+                    </span>
                   )}
                 </dd>
               </div>
