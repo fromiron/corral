@@ -2418,7 +2418,10 @@
       "external_observed": "Changed by a command or outside Corral",
       "mixed": "Written by Corral, then changed by a command or outside Corral"
     },
-    "externalBadge": "External",
+    "provenanceMark": {
+      "external_observed": "Command or outside",
+      "mixed": "Changed after Corral"
+    },
     "outsideRuns": "Outside runs",
     "compareRun": "Compare this run only",
     "compareRunNamed": "Compare {run} only",
@@ -2538,6 +2541,8 @@
     "run": "Run",
     "folderReadFailed": "The project folder link could not be read: {message}",
     "copyReadFailed": "This conversation’s Paddock could not be read: {message}",
+    "gitReadFailed": "Could not read the Git state: {message}",
+    "mergeReadFailed": "Could not read the merge into the parent conversation: {message}",
     "checksReadFailed": "The check records could not be read: {message}",
     "listReadFailed": "The file list could not be read: {message}"
   },

@@ -748,17 +748,20 @@ it('while a comment is being written, adding it is the one primary action', asyn
   expect(primaries()).toEqual(['Review.sendReview']);
 });
 
-it('marks only files written outside Corral, with a badge whose tooltip names the source', async () => {
+it('marks only files not left as Corral wrote them, each source in its own words, with a tooltip that names it', async () => {
   const view = await mount({
     search: { scope: 'session' },
     files: ['corral.ts', 'outside.ts', 'mixed.ts'],
     provenance: { 'outside.ts': 'external_observed', 'mixed.ts': 'mixed' },
   });
   const badge = (path: string) =>
-    [...(view.fileButton(path)?.querySelectorAll<HTMLElement>('[title]') ?? [])].find(
-      (node) => node.textContent === 'Files.externalBadge',
+    [...(view.fileButton(path)?.querySelectorAll<HTMLElement>('[title]') ?? [])].find((node) =>
+      node.textContent?.startsWith('Files.provenanceMark.'),
     );
   expect(badge('corral.ts')).toBeUndefined();
+  expect(badge('outside.ts')?.textContent).toBe('Files.provenanceMark.external_observed');
+  expect(badge('mixed.ts')?.textContent).toBe('Files.provenanceMark.mixed');
+  expect(badge('outside.ts')?.textContent).not.toBe(badge('mixed.ts')?.textContent);
   expect(badge('outside.ts')?.getAttribute('title')).toBe('Files.provenance.external_observed');
   expect(badge('mixed.ts')?.getAttribute('title')).toBe('Files.provenance.mixed');
   // The badge sits under the name instead of taking the name's width beside the counts.
@@ -771,6 +774,48 @@ it('marks only files written outside Corral, with a badge whose tooltip names th
     expect(view.fileButton(path)?.querySelector('svg')).toBeNull();
   // Screen readers still hear every file's source.
   expect(view.fileButton('corral.ts')?.textContent).toContain('Files.provenance.managed_agent');
+});
+
+it('puts the shown file’s source mark after the path in the comparison head only while the file list is folded away', async () => {
+  const headMark = (container: HTMLElement) => {
+    const path = container.querySelector('[data-testid="file-diff"] h3');
+    const next = path?.nextElementSibling;
+    return next?.textContent?.startsWith('Files.provenanceMark.') ? next : null;
+  };
+  const marks = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-testid="file-diff"] *')].filter((node) =>
+      node.textContent?.startsWith('Files.provenanceMark.'),
+    );
+  const files = ['outside.ts', 'mixed.ts', 'corral.ts'];
+  const provenance = { 'outside.ts': 'external_observed', 'mixed.ts': 'mixed' };
+
+  reviewWidth(700);
+  const narrow = await mount({
+    search: { scope: 'session', file: 'outside.ts' },
+    files,
+    provenance,
+  });
+  const toggle = narrow.container.querySelector<HTMLButtonElement>('nav button[aria-expanded]');
+  expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+  const mark = headMark(narrow.container);
+  expect(mark?.textContent).toBe('Files.provenanceMark.external_observed');
+  expect(mark?.getAttribute('title')).toBe('Files.provenance.external_observed');
+  // Unfolded, the list says it, so the head does not say it again.
+  await act(async () => toggle?.click());
+  expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+  expect(marks(narrow.container)).toEqual([]);
+  // Folded again on another file, the head names that file's source.
+  await act(async () => narrow.fileButton('mixed.ts')?.click());
+  expect(headMark(narrow.container)?.textContent).toBe('Files.provenanceMark.mixed');
+  // A file as Corral wrote it carries no mark anywhere.
+  await act(async () => narrow.fileButton('corral.ts')?.click());
+  expect(marks(narrow.container)).toEqual([]);
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  reviewWidth(1200);
+  const wide = await mount({ search: { scope: 'session', file: 'outside.ts' }, files, provenance });
+  expect(wide.container.querySelector('[data-testid="file-diff"] h3')).not.toBeNull();
+  expect(marks(wide.container)).toEqual([]);
 });
 
 it('shows the shared empty view where there is no diff to read', async () => {
