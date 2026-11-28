@@ -394,7 +394,7 @@ export function SessionChangesPanel({
         ) : null}
       </TabPanel>
       <TabPanel value="checkpoints" keepMounted className="min-h-0 flex-1 overflow-auto p-3">
-        {visited.has('checkpoints') ? (
+        {visited.has('checkpoints') && !missing ? (
           <CheckpointPanel key={session.sessionId} sessionId={session.sessionId} />
         ) : null}
       </TabPanel>
