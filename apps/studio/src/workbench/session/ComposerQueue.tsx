@@ -20,6 +20,7 @@ export function ComposerQueue({
   autoStart,
   autoStartShown = true,
   onAutoStartChange,
+  running,
   startDisabled,
   onStart,
   onEdit,
@@ -31,6 +32,7 @@ export function ComposerQueue({
   /** A server starts saved requests, so the switch is there. */
   autoStartShown?: boolean;
   onAutoStartChange: (value: boolean) => void;
+  running: boolean;
   startDisabled: boolean;
   onStart: (entry: SessionEntry) => void;
   onEdit: (entry: SessionEntry) => void;
@@ -100,10 +102,12 @@ export function ComposerQueue({
       renderActions={(item) => {
         const entry = entryFor(item);
         if (!entry) return null;
-        const start = (
+        const start = !running ? (
           <Button variant="ghost" disabled={startDisabled} onClick={() => onStart(entry)}>
             {t('startNow')}
           </Button>
+        ) : autoStartShown && autoStart ? null : (
+          <span className="text-caption text-muted-foreground">{t('startAfterRun')}</span>
         );
         return entry.resend ? (
           <>

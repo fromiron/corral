@@ -2213,6 +2213,7 @@
     "requestLabel": "요청",
     "queueHeading": "대기 요청",
     "startNow": "지금 시작",
+    "startAfterRun": "실행이 끝나면 시작할 수 있습니다",
     "resendAt": "{time}에 다시 보냄",
     "remove": "지우기",
     "openResults": "결과 보기",

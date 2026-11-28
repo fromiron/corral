@@ -2213,6 +2213,7 @@
     "requestLabel": "Request",
     "queueHeading": "Queued requests",
     "startNow": "Start now",
+    "startAfterRun": "You can start it when the run ends",
     "resendAt": "Resends at {time}",
     "remove": "Remove",
     "openResults": "Open results",

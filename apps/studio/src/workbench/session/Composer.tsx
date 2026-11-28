@@ -800,7 +800,8 @@ function SessionComposer({
             // Auto start is the server's; the browser demo has none, so it has no such setting.
             autoStartShown={services.mode !== 'browser'}
             onAutoStartChange={(value) => void updateAutoStart(value)}
-            startDisabled={Boolean(active) || busy || savedRequestUnavailable}
+            running={Boolean(active)}
+            startDisabled={busy || savedRequestUnavailable}
             onStart={(entry) => void queue.start(entry)}
             onEdit={(entry) => void queue.edit(entry)}
             onRemove={(entry) => void queue.remove(entry)}

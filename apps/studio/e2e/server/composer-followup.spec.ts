@@ -30,7 +30,11 @@ test.describe('saved requests with a stale instruction draft', () => {
         await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
         await box.fill('Saved queued request');
         await box.press('Alt+Enter');
-        await expect(page.getByRole('button', { name: 'Start now', exact: true })).toBeVisible();
+        // With auto start on, the card has no Start now while the run works.
+        await expect(page.getByRole('region', { name: 'Queued requests' })).toContainText(
+          'Saved queued request',
+        );
+        await expect(page.getByRole('button', { name: 'Start now', exact: true })).toHaveCount(0);
         if (path !== 'auto')
           await page
             .getByRole('switch', {

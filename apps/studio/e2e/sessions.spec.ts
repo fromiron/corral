@@ -87,7 +87,9 @@ test('while a run works, a request waits in the queue until a person starts it',
   await expect(queue).toContainText('Then summarise it');
   // Auto start is the server's; the browser demo has none, so a person starts it.
   await expect(queue.getByRole('switch')).toHaveCount(0);
-  await expect(queue.getByRole('button', { name: 'Start now' })).toBeDisabled();
+  // While the run works there is no Start now, only the line that says when it can start.
+  await expect(queue.getByRole('button', { name: 'Start now' })).toHaveCount(0);
+  await expect(queue).toContainText('You can start it when the run ends');
   await expect(status(cards(page).first(), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
