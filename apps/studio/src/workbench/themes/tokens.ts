@@ -93,8 +93,8 @@ export function paletteTokens(palette: Palette): Readonly<Record<string, string>
     '--foreground': ui.foreground,
     '--card-foreground': ui.foreground,
     '--accent-foreground': ui.foreground,
-    // Quiet fill: the sunken step in dark; a little darker than the floor in light (as the kit).
-    '--muted': dark ? surface(2) : mix(ui.background, ui.foreground, 0.045),
+    // Quiet fill: a little darker than the floor in both bases, so it shows on every step.
+    '--muted': mix(ui.background, dark ? BLACK : ui.foreground, dark ? 0.22 : 0.045),
     '--muted-foreground': ui.muted,
     '--accent': textFill(dark ? 22 : 9),
     // The kit's tint pair is white (or black) over the surface; here an opaque fill, with hover

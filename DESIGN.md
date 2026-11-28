@@ -75,7 +75,7 @@ The design kit is copied into this repository. Building Corral does not read ano
 | `foreground` / `primary` | #171717 | #F5F5F5 | Main text and primary button fill |
 | `secondary` / `tint` | Black at 8% | White at 25% | Secondary button fill over the current surface |
 | `muted-foreground` | #666666 | #B8B8B8 | Secondary text and metadata |
-| `muted` | #F4F4F5 | #1E1E1E | Quiet backgrounds, never text |
+| `muted` | #F4F4F5 | #121212 | Quiet backgrounds, never text. A little darker than the floor in both bases, so a tab track or a code block shows on every surface step (the kit's dark value is its surface 2, where Corral's content rests) |
 | `accent` | #E5E5E5 | #525252 | Neutral interactive emphasis, never a brand color |
 | `selected` | #D4D4D4 | #525252 | Selected item background |
 | `destructive` | #B91C1C | #FCA5A5 | Error text, icons and destructive actions |

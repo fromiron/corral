@@ -16,6 +16,10 @@
   --emphasis: light-dark(#2f5fc4, #6b97ff);
   --emphasis-hover: light-dark(#2954b3, #5c89f2);
   --muted-foreground: light-dark(#666666, #b8b8b8);
+  /* The quiet fill sits a little under the floor in dark as it does in light, so a tab track or
+     a code block shows on every surface step. The kit's dark value is its surface 2, which is
+     the surface Corral's content rests on. */
+  --muted: light-dark(#f4f4f5, #121212);
 
   --primary: var(--foreground);
   --primary-foreground: var(--background);

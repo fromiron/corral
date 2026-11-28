@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, mix } from './color.ts';
+import { contrastRatio, mix, relativeLuminance } from './color.ts';
 import type { Palette } from './palette.ts';
 import { legibleText, PALETTE_TOKENS, paletteTokens } from './tokens.ts';
 
@@ -130,6 +130,17 @@ describe('the one token function', () => {
       expect(tokens[fill]).not.toBe(faint.ui.background);
   });
 
+  it('makes the quiet fill a little darker than the floor in both bases, so it shows on every surface step', () => {
+    for (const palette of [dark, light]) {
+      const tokens = paletteTokens(palette);
+      const fill = tokens['--muted'] as string;
+      for (const step of [1, 2, 3, 4, 5, 6, 7, 8])
+        expect(fill, `${palette.name} step ${step}`).not.toBe(tokens[`--surface-${step}`]);
+      expect(relativeLuminance(fill)).toBeLessThan(relativeLuminance(palette.ui.background));
+      expect(contrastRatio(fill, palette.ui.background)).toBeLessThan(1.15);
+    }
+  });
+
   it('puts the text with the higher contrast on a filled error surface', () => {
     expect(paletteTokens(dark)['--destructive-contrast']).toBe('#202020');
     const pale = { ...light, ui: { ...light.ui, error: '#b00020' } };
@@ -234,6 +245,16 @@ describe('the default light and dark, which no theme function writes', () => {
       .join('')}`;
     return { color, amount: Number(parts[4]) };
   };
+
+  it.each(['light', 'dark'] as const)(
+    'keep the quiet fill a little darker than the floor in %s, apart from every surface step',
+    (base) => {
+      const fill = pair('--muted', base);
+      for (const step of [1, 2, 3, 4, 5, 6, 7, 8])
+        expect(fill, `step ${step}`).not.toBe(pair(`--surface-${step}`, base));
+      expect(relativeLuminance(fill)).toBeLessThan(relativeLuminance(pair('--surface-1', base)));
+    },
+  );
 
   it.each(['light', 'dark'] as const)(
     'keep text and secondary text at 4.5:1 on a pointed-at or chosen row in %s, as a theme must',
