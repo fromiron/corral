@@ -57,15 +57,17 @@ export function contextLabel(
           : t('contextPending');
 }
 
-export function contextStateWithoutName(
+export function measurementWord(
   context: ChatWidgetModel['context'],
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
-  return context.completeness === 'error'
-    ? t('measurementError')
-    : context.kind === 'partial'
-      ? t('measurementPartial')
-      : t('measurementPending');
+  if (context.completeness === 'error') return t('measurementError');
+  if (context.coverage === 'request' && context.completeness === 'complete')
+    return t('measurementFull');
+  if (context.kind === 'messages') return t('measurementMessages');
+  return context.tokens != null || context.kind === 'partial'
+    ? t('measurementPartial')
+    : t('measurementPending');
 }
 
 /** A detail's heading. Details open in Overview's own place, so none is a popover's title. */
@@ -146,13 +148,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
         <div className="flex items-center justify-between gap-3">
           <DetailTitle>{t('context')}</DetailTitle>
           <span className="rounded-md bg-subtle px-2 py-0.5 text-micro text-muted-foreground">
-            {complete
-              ? t('measurementFull')
-              : context.kind === 'messages'
-                ? t('measurementMessages')
-                : measured
-                  ? t('measurementPartial')
-                  : t('measurementPending')}
+            {measurementWord(context, t)}
           </span>
         </div>
         <p className="mt-1.5 break-words text-caption text-muted-foreground">

@@ -461,6 +461,32 @@ it('under the Context title an unmeasured state is said without the name again',
   }
 });
 
+// The card and the detail it opens say the same word for the same state.
+it('the context detail names a failed measurement as its card does', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      context: {
+        ...base.context,
+        kind: 'empty',
+        tokens: null,
+        percent: null,
+        barPercent: null,
+        freeTokens: null,
+        windowTokens: null,
+        parts: [],
+        coverage: null,
+        completeness: 'error',
+        measurementStage: null,
+      },
+    } as Partial<ChatWidgetModel>),
+  );
+  await act(async () => openButton(container, 'Context')?.click());
+  const detail = container.querySelector('[data-testid="context-inspector"]');
+  expect(visible(detail)).toContain('Measurement error');
+  expect(visible(detail)).not.toContain('Not measured');
+});
+
 // Agents, Context and Usage each open a detail in place, so their heads are one shape.
 it('heads every summary that opens a detail the same way', async () => {
   const container = await render(

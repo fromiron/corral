@@ -45,7 +45,7 @@ import {
   chipClass,
   compactNumber,
   contextLabel,
-  contextStateWithoutName,
+  measurementWord,
   RunLink,
 } from './ChatWidgets.tsx';
 import {
@@ -370,7 +370,7 @@ function ContextWidget({ model, open }: { model: ChatWidgetModel; open: () => vo
           />
         ) : (
           <p aria-hidden="true" className="text-caption text-muted-foreground">
-            {contextStateWithoutName(context, tw)}
+            {measurementWord(context, tw)}
           </p>
         )}
         {meterValue != null && <Meter className="mt-2" value={meterValue} label={summary} />}

@@ -68,7 +68,14 @@ function fixture(live = true): ChatWidgetModel {
       { id: 'reviewer', name: 'Reviewer', status: live ? 'waiting_message' : 'succeeded' },
     ],
     tools: [],
-    results: [{ id: 'current_report', label: 'Research report v1' }],
+    results: [
+      {
+        id: 'current_report',
+        label: 'Research report v1 · Writer · execution 1',
+        name: 'Research report v1',
+        madeBy: 'Writer · execution 1',
+      },
+    ],
     environment: 'simulated',
     usage: usage ? { ...usage, perCall: [140, 260, 210, 320] } : null,
     cost: null,

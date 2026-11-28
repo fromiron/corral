@@ -69,11 +69,11 @@
 
 | 묶음 | 담당 | 파일 | 관문 | 상태 |
 |---|---|---|---|---|
-| A1 결과 행 | Fable | `SessionPanels.tsx`의 결과 목록, `RunResultVersions.tsx` | 없음 | 아직 |
-| A2 현황과 하단 통계 | Fable | `widgets/ChatWidgets.tsx`, `OverviewWidgets.tsx`, `ComposerStats.tsx`, `selectors.ts` | 없음 | 아직 |
-| A3 사이드바와 확인 필요 집계 | Opus | `sessionList.ts`, `Sidebar.tsx` | 없음 | 아직 |
+| A1 결과 행 | Fable | `SessionPanels.tsx`의 결과 목록, `RunResultVersions.tsx` | 없음 | 끝 |
+| A2 현황과 하단 통계 | Fable | `widgets/ChatWidgets.tsx`, `OverviewWidgets.tsx`, `ComposerStats.tsx`, `selectors.ts` | 없음 | 끝 |
+| A3 사이드바와 확인 필요 집계 | Opus | `sessionList.ts`, `Sidebar.tsx` | 없음 | 끝 |
 | A4 변경 탭 | Fable이 정하고 Opus | `ReviewPage.tsx`, `SessionChangesPanel.tsx`, `PierreCode.tsx` | Fable의 명세 커밋 | 아직 |
-| A5 대기 요청 | Opus | `ComposerQueue.tsx`, `Composer.tsx`의 대기열 호출부, `SessionEntries.tsx`의 요청 줄, `composer/queue.ts`, `entryMeta.ts`, `EntryStatus.tsx`, 서버의 `session-queue.ts`, 2차에서 저장소 두 파일 | 1차: Fable의 명세 커밋. 2차: 소유자의 커밋과 리뷰 | 아직 |
+| A5 대기 요청 | Opus | `ComposerQueue.tsx`, `Composer.tsx`의 대기열 호출부, `SessionEntries.tsx`의 요청 줄, `composer/queue.ts`, `entryMeta.ts`, `EntryStatus.tsx`, 서버의 `session-queue.ts`, 2차에서 저장소 두 파일 | 1차: Fable의 명세 커밋. 2차: 소유자의 커밋과 리뷰 | 1차 끝, 2차 대기 |
 
 A1·A2를 주 세션이 하는 동안 A3와 A5의 1차가 함께 돌 수 있다. A4는 A3가 끝난 자리에 들어간다.
 
@@ -88,7 +88,7 @@ A1·A2를 주 세션이 하는 동안 A3와 A5의 1차가 함께 돌 수 있다.
 ### A2 현황과 하단 통계
 
 - 명세: `chat-widgets-contract.md`의 세션 하단 합계와 현황 문단. 이름을 한 번만 쓰는 규칙은 `workbench.md`에 이미 있다.
-- Context 이름의 반복: "Context" 제목 옆에 "Context · awaiting request"처럼 이름이 다시 나온다. 대기뿐 아니라 오류·부분 측정 상태도 같다. 그 문구는 툴팁, 접근 이름, 낭독기 요약에도 쓰이므로 메시지를 고치지 않고, 제목 아래에 그리는 자리만 상세의 배지가 쓰는 이름 없는 상태 낱말(측정 전, 부분 측정, 측정 오류)을 쓴다.
+- Context 이름의 반복: "Context" 제목 옆에 "Context · awaiting request"처럼 이름이 다시 나온다. 대기뿐 아니라 오류·부분 측정 상태도 같다. 그 문구는 툴팁, 접근 이름, 낭독기 요약에도 쓰이므로 메시지를 고치지 않고, 제목 아래에 그리는 자리만 이름 없는 상태 낱말(측정 전, 부분 측정, 측정 오류)을 쓰고, 상세의 배지도 같은 낱말을 쓴다.
 - 하단 토큰 합계: 입력이나 출력 토큰을 보고한 호출이 없으면 0이 아니라 "토큰 보고 없음"(tokens not reported)이라고 적는다. 캐시의 "보고 없음"과 같은 규칙이다.
 - 현황의 절(SCR-15): 상세를 여는 요약 셋(에이전트·컨텍스트·사용량)은 같은 Card 머리를 쓴다. 다른 곳으로 가는 행 둘(결과·변경)은 이름 아래 한 줄을 두는 inline 행이다. 여는 표시는 한 세로줄에 선다.
 - 확인: `OverviewWidgets.test.tsx`, `ComposerStats.test.tsx`, `overview.test.ts`, 현황을 연 화면의 light·dark, en·ko.
