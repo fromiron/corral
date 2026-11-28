@@ -592,6 +592,25 @@ it('패널이 넓힘이고 파일 · 실행 #1 탭이 열려 있으며 실행 #1
   expect(cancels(world)).toEqual([]);
 });
 
+it('패널이 옆이고 탭이 열려 있다 → 넓히기를 누른다 → 넓히기 버튼의 이름과 아이콘은 그대로이고 눌림 상태와 눌린 모양이 넓혔음을 말한다', async () => {
+  const { world } = await busyRun();
+  await open(world, `/sessions/${world.sessionId}`);
+  await openRunTab();
+  const surface = () => maximizeButton()?.querySelector('span')?.className;
+  const icon = maximizeButton()?.querySelector('svg')?.outerHTML;
+  const atRest = surface();
+  expect(icon).toBeTruthy();
+  expect(atRest).toBeTruthy();
+  expect(maximizeButton()?.getAttribute('aria-pressed')).toBe('false');
+
+  await press(maximizeButton());
+
+  expect(presentation()).toBe('maximized');
+  expect(maximizeButton()?.getAttribute('aria-pressed')).toBe('true');
+  expect(maximizeButton()?.querySelector('svg')?.outerHTML).toBe(icon);
+  expect(surface()).not.toBe(atRest);
+});
+
 it('패널이 넓힘이고 실행 #1의 탭 머리가 전체 중지 확인을 묻고 있다 → 넓히기를 푼다 → 확인 대기는 버려지고 취소는 보내지지 않으며 컴포저의 확인은 한 번도 뜨지 않는다', async () => {
   const { world, runId } = await busyRun();
   await open(world, `/sessions/${world.sessionId}`);

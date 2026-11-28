@@ -28,7 +28,6 @@ import {
   ListChecks,
   LoaderCircle,
   Maximize2,
-  Minimize2,
   Monitor,
   Plus,
   Route,
@@ -532,13 +531,13 @@ export function SessionPanelSide({
             maximizeAvailable(state) ? (
               <Tooltip content={maximizeLabel}>
                 <Button
-                  variant="ghost"
+                  variant={maximized ? 'secondary' : 'ghost'}
                   size="icon-compact"
                   aria-label={maximizeLabel}
                   aria-pressed={maximized}
                   onClick={onMaximize}
                 >
-                  {maximized ? <Minimize2 /> : <Maximize2 />}
+                  <Maximize2 />
                 </Button>
               </Tooltip>
             ) : null
