@@ -10,6 +10,9 @@ import {
 import {
   Button,
   cn,
+  Dialog,
+  DialogPopup,
+  DialogTitle,
   fontWeights,
   Sidebar as KitSidebar,
   Menu,
@@ -55,6 +58,7 @@ import {
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
+  type ComponentProps,
   type KeyboardEvent,
   memo,
   useEffect,
@@ -1078,3 +1082,31 @@ export const Sidebar = memo(function Sidebar({
     </KitSidebar>
   );
 });
+
+export function SidebarDrawer({
+  model,
+  open,
+  onOpenChange,
+  finalFocus,
+}: {
+  model: ReturnType<typeof useCorralSidebar>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  finalFocus?: ComponentProps<typeof DialogPopup>['finalFocus'];
+}) {
+  const shell = useTranslations('Shell');
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPopup
+        className="mobile-sidebar-dialog"
+        position="left"
+        showCloseButton={false}
+        bottomStickOnMobile={false}
+        finalFocus={finalFocus}
+      >
+        <DialogTitle className="sr-only">{shell('title')}</DialogTitle>
+        <Sidebar model={model} mobile />
+      </DialogPopup>
+    </Dialog>
+  );
+}

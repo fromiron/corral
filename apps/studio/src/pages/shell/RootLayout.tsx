@@ -5,9 +5,6 @@ import {
   BannerTitle,
   Button,
   cn,
-  Dialog,
-  DialogPopup,
-  DialogTitle,
   fontWeights,
   SidebarProvider,
   type SidebarRailProps,
@@ -63,7 +60,7 @@ import {
   SettingsLifecycle,
   SettingsOperationStatus,
 } from '../../workbench/SettingsLifecycle.tsx';
-import { Sidebar, useCorralSidebar } from '../../workbench/Sidebar.tsx';
+import { Sidebar, SidebarDrawer, useCorralSidebar } from '../../workbench/Sidebar.tsx';
 import { outsidePage, TopbarPath } from '../../workbench/TopbarPath.tsx';
 import { TopbarBar, TopbarFit, TopbarSlotContext } from '../../workbench/TopbarSlot.tsx';
 import { appliedAppearance, applyAppearance } from '../../workbench/themes/appearance.ts';
@@ -343,18 +340,12 @@ function RootFrame() {
               maxWidth={420}
             >
               {narrow ? (
-                <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-                  <DialogPopup
-                    className="mobile-sidebar-dialog"
-                    position="left"
-                    showCloseButton={false}
-                    bottomStickOnMobile={false}
-                    finalFocus={() => (handedOff.current ? false : sidebarTrigger.current)}
-                  >
-                    <DialogTitle className="sr-only">{tw('expandSidebar')}</DialogTitle>
-                    <Sidebar model={sidebar} mobile />
-                  </DialogPopup>
-                </Dialog>
+                <SidebarDrawer
+                  model={sidebar}
+                  open={mobileOpen}
+                  onOpenChange={setMobileOpen}
+                  finalFocus={() => (handedOff.current ? false : sidebarTrigger.current)}
+                />
               ) : (
                 <Sidebar model={sidebar} railProps={railProps} />
               )}
