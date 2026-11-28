@@ -57,6 +57,17 @@ export function contextLabel(
           : t('contextPending');
 }
 
+export function contextStateWithoutName(
+  context: ChatWidgetModel['context'],
+  t: ReturnType<typeof useTranslations<'Widgets'>>,
+) {
+  return context.completeness === 'error'
+    ? t('measurementError')
+    : context.kind === 'partial'
+      ? t('measurementPartial')
+      : t('measurementPending');
+}
+
 /** A detail's heading. Details open in Overview's own place, so none is a popover's title. */
 function DetailTitle({ children }: { children: ReactNode }) {
   return (

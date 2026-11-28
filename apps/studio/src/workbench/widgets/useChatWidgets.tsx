@@ -81,7 +81,7 @@ export interface ChatWidgetModel {
   /** Current attempts only; the execution view retains retry history. */
   agentRows: { id: string; name: string; status: ExecutionStatus }[];
   tools: { id: string; name: string; tone: string }[];
-  results: { id: string; label: string }[];
+  results: { id: string; label: string; name: string; madeBy: string | null }[];
   environment: 'simulated' | 'restricted' | null;
   /** Output tokens, calls and their limits for the Usage widget. */
   usage: UsageSummary | null;
@@ -480,17 +480,20 @@ function useChatWidgetState(
     .map((item) => {
       const nodeId = projection?.executions[item.authorExecutionId]?.nodeId;
       const author = view?.definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+      const name = `${item.name} v${item.version}`;
+      const madeBy = [
+        author,
+        item.authorExecutionNumber
+          ? resultText('authorExecution', { number: item.authorExecutionNumber })
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
       return {
         id: item.artifactVersionId,
-        label: [
-          `${item.name} v${item.version}`,
-          author,
-          item.authorExecutionNumber
-            ? resultText('authorExecution', { number: item.authorExecutionNumber })
-            : null,
-        ]
-          .filter(Boolean)
-          .join(' · '),
+        label: [name, madeBy].filter(Boolean).join(' · '),
+        name,
+        madeBy: madeBy || null,
       };
     });
   useEffect(() => {
