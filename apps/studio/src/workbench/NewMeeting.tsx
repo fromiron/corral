@@ -396,6 +396,21 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
                   </Button>
                 </div>
               </fieldset>
+              <div className="flex flex-col gap-1">
+                <span aria-hidden className={FIELD_LABEL}>
+                  {t('secretaryModel')}
+                </span>
+                <ModelSelect
+                  label={t('secretaryModel')}
+                  value={secretary}
+                  options={choices}
+                  onValueChange={setSecretary}
+                />
+              </div>
+            </div>
+          </ScrollArea>
+          <div>
+            <div className="mt-4 flex flex-col gap-2 empty:hidden">
               {liveModels && profiles === null ? (
                 <p role="status" className="text-muted-foreground">
                   {t('modelsLoading')}
@@ -431,30 +446,17 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
                   ) : null}
                 </div>
               ) : null}
-              <div className="flex flex-col gap-1">
-                <span aria-hidden className={FIELD_LABEL}>
-                  {t('secretaryModel')}
-                </span>
-                <ModelSelect
-                  label={t('secretaryModel')}
-                  value={secretary}
-                  options={choices}
-                  onValueChange={setSecretary}
-                />
-                {liveModels && profiles !== null && !isAvailable(secretary) ? (
-                  <p role="alert" className="text-danger">
-                    {t('secretaryUnavailable')}
-                  </p>
-                ) : null}
-              </div>
+              {liveModels && profiles !== null && !isAvailable(secretary) ? (
+                <p role="alert" className="text-danger">
+                  {t('secretaryUnavailable')}
+                </p>
+              ) : null}
+              {error ? (
+                <p role="alert" className="text-danger wrap-anywhere">
+                  {error}
+                </p>
+              ) : null}
             </div>
-          </ScrollArea>
-          <div>
-            {error ? (
-              <p role="alert" className="mt-4 text-danger wrap-anywhere">
-                {error}
-              </p>
-            ) : null}
             <DialogFooter>
               <Button type="button" variant="tertiary" disabled={saving} onClick={onClose}>
                 {t('cancel')}

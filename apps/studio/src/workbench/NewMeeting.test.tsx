@@ -31,7 +31,7 @@ vi.mock('@corral/react/design-kit', async (importOriginal) => ({
   DialogDescription: ({ children }: any) => <p>{children}</p>,
   DialogHeader: ({ children }: any) => <div>{children}</div>,
   DialogFooter: ({ children }: any) => <div>{children}</div>,
-  ScrollArea: ({ children }: any) => <div>{children}</div>,
+  ScrollArea: ({ children }: any) => <div data-scrolls>{children}</div>,
   Collapse: ({ id, open, children }: any) => (
     <div id={id} inert={!open || undefined}>
       {children}
@@ -447,6 +447,35 @@ it('unavailable roles remain visible until the person removes them before creati
   const meeting = f.createSession.mock.calls[0]?.[0].meeting;
   expect(meeting?.participants).toHaveLength(2);
   expect(meeting?.participants.every((item) => item.modelProfile === 'ready')).toBe(true);
+});
+
+it('says why Create is off beside it, outside the part that scrolls', async () => {
+  const f = await mount(null);
+  const beside = (text: string) => {
+    const said = [...f.container.querySelectorAll('[role="status"], [role="alert"]')].find((item) =>
+      item.textContent?.includes(text),
+    );
+    return Boolean(said) && !said?.closest('[data-scrolls]');
+  };
+  expect(beside('modelsLoading')).toBe(true);
+  state.profiles = [profile('offline', false)];
+  await f.render();
+  expect(beside('noConnectedModels')).toBe(true);
+  state.profiles = [profile('ready'), profile('offline', false)];
+  await f.render();
+  const pick = async (label: string) => {
+    const model = f.container.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!;
+    await act(async () => {
+      model.value = 'offline';
+      model.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  };
+  await pick('participantModel2');
+  await pick('secretaryModel');
+  expect(beside('unavailableParticipants')).toBe(true);
+  expect(beside('secretaryUnavailable')).toBe(true);
+  expect(f.button('removeUnavailable')?.closest('[data-scrolls]')).toBeNull();
+  expect(f.button('create')?.disabled).toBe(true);
 });
 
 it('uses readable numbered participant names for simulated models', async () => {
