@@ -18,10 +18,11 @@ export function HarnessDefaultsPage({ scope }: { scope: 'personal' | 'project' }
   return (
     <SettingsLayout active={scope === 'personal' ? 'defaults' : 'project-defaults'}>
       <main className="settings-content">
-        <ScopeLadder current={scope} />
         {scopeId ? (
           <DefaultsEditor key={`${scope}:${scopeId}`} scope={scope} scopeId={scopeId} />
-        ) : null}
+        ) : (
+          <ScopeLadder current={scope} />
+        )}
       </main>
     </SettingsLayout>
   );
@@ -90,6 +91,39 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
   }
   return (
     <>
+      <ScopeLadder current={scope}>
+        {api ? (
+          <Select
+            label={t(scope)}
+            placeholder={t('none')}
+            value={draft}
+            disabled={!current || busy}
+            className="h-9 w-full sm:w-72"
+            onValueChange={(value) => {
+              setDraft(value);
+              setNotice('');
+            }}
+            options={[
+              { value: '', label: t('none') },
+              ...(current?.binding &&
+              !profiles.some((p) => `${p.profileId}:${p.revision}` === bindingKey(current))
+                ? [
+                    {
+                      value: bindingKey(current),
+                      label: `${pinned?.name ?? current.binding.profileId} · r${current.binding.revision}`,
+                    },
+                  ]
+                : []),
+              ...profiles
+                .filter((p) => !p.archivedAt || `${p.profileId}:${p.revision}` === draft)
+                .map((p) => ({
+                  value: `${p.profileId}:${p.revision}`,
+                  label: `${p.name} · r${p.revision}`,
+                })),
+            ]}
+          />
+        ) : null}
+      </ScopeLadder>
       {!api ? (
         <p>{t('localOnly')}</p>
       ) : (
@@ -99,40 +133,6 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
               {error}
             </p>
           ) : null}
-          <section className="settings-row">
-            <div>
-              <h3>{t(scope)}</h3>
-            </div>
-            <Select
-              label={t(scope)}
-              placeholder={t('none')}
-              value={draft}
-              disabled={!current || busy}
-              className="h-9 w-full sm:w-72"
-              onValueChange={(value) => {
-                setDraft(value);
-                setNotice('');
-              }}
-              options={[
-                { value: '', label: t('none') },
-                ...(current?.binding &&
-                !profiles.some((p) => `${p.profileId}:${p.revision}` === bindingKey(current))
-                  ? [
-                      {
-                        value: bindingKey(current),
-                        label: `${pinned?.name ?? current.binding.profileId} · r${current.binding.revision}`,
-                      },
-                    ]
-                  : []),
-                ...profiles
-                  .filter((p) => !p.archivedAt || `${p.profileId}:${p.revision}` === draft)
-                  .map((p) => ({
-                    value: `${p.profileId}:${p.revision}`,
-                    label: `${p.name} · r${p.revision}`,
-                  })),
-              ]}
-            />
-          </section>
           <div className="flex gap-2">
             <Button disabled={!dirty || busy} onClick={() => void save()}>
               {r('save')}
