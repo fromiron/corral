@@ -13,6 +13,7 @@ export * from './adapters/separator.tsx';
 export * from './adapters/side-panel-frame.tsx';
 export * from './adapters/skeleton.tsx';
 export * from './adapters/splitter.tsx';
+export * from './adapters/tab-strip.ts';
 export * from './adapters/tabs-closable.tsx';
 export * from './adapters/textarea.tsx';
 export * from './adapters/tooltip.tsx';

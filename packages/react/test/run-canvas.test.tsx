@@ -623,6 +623,33 @@ describe('RunCanvas', () => {
     expect(document.querySelectorAll('marker, [data-handleid]')).toHaveLength(0);
   });
 
+  it("leaves the mark of a relation between an agent's own executions where its loop turns", async () => {
+    const { definition } = team();
+    const live = projectionWith({
+      executions: {
+        writer: execution('writer', 'write'),
+        again: execution('again', 'write', { parentExecutionId: 'writer' }),
+      },
+      executionOrder: ['writer', 'again'],
+      nodeExecutions: { write: ['writer', 'again'] },
+    });
+    renderCanvas(definition, live);
+    await act(async () => {});
+    const loop = document.querySelector(
+      'path[data-relation][data-source="write"][data-target="write"]',
+    );
+    expect(loop).not.toBeNull();
+    const at = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(
+      loop?.parentElement?.querySelector('[data-direction-marker]')?.getAttribute('transform') ??
+        '',
+    );
+    const centre = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(
+      document.querySelector<HTMLElement>('[data-agent-id="write"]')?.style.transform ?? '',
+    );
+    const turn = { x: Number(centre?.[1]) + 46, y: Number(centre?.[2]) - 58 };
+    expect(Math.hypot(Number(at?.[1]) - turn.x, Number(at?.[2]) - turn.y)).toBeLessThan(6);
+  });
+
   it('colours work in progress, slowly greys finished relations and never flows a failure', async () => {
     const { definition } = team();
     const root = execution('root', 'research', { status: 'active' });
@@ -715,6 +742,16 @@ describe('RunCanvas', () => {
     expect(document.querySelectorAll('[data-direction-marker]')).toHaveLength(
       document.querySelectorAll('path[data-relation]').length,
     );
+    const markOf = (source: string, target: string) => {
+      const at = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(
+        path(source, target)
+          ?.parentElement?.querySelector('[data-direction-marker]')
+          ?.getAttribute('transform') ?? '',
+      );
+      return { x: Number(at?.[1]), y: Number(at?.[2]) };
+    };
+    const [out, home] = [markOf('research', 'write'), markOf('write', 'research')];
+    expect(Math.hypot(out.x - home.x, out.y - home.y)).toBeGreaterThanOrEqual(16);
     const legend = () =>
       [...screen.getByRole('list', { name: 'Observed relationships' }).children].map(
         (item) => item.textContent,

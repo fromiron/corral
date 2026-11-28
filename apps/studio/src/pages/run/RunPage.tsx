@@ -746,68 +746,62 @@ function RunWorkspace({
                   id: 'graph',
                   label: m('graph'),
                   render: () => (
-                    <div className="flex h-full min-h-0 flex-col">
-                      <div className="flex shrink-0 justify-end px-3 pt-2">
-                        <GraphDisplayToggle value={graphDisplay} onChange={setGraphChoice} />
-                      </div>
-                      <div className="min-h-0 flex-1">
-                        <RunCanvas
-                          session={session}
-                          definition={definition}
-                          display={graphDisplay}
-                          onFitWidthZoom={fitZoomed}
-                          selectedNodeId={highlightedNode}
-                          onSelectNode={(id) => setSelectedNodeId(id)}
-                          renderNodePreview={(nodeId, { close, trigger: origin }) =>
-                            projection ? (
-                              <>
-                                <NodeExecutions
-                                  projection={projection}
-                                  definition={definition}
-                                  nodeId={nodeId}
-                                  selectedExecutionId={execution ?? null}
-                                  preview
-                                  onChoose={(id) => {
-                                    close();
-                                    chooseExecution(id, origin);
-                                  }}
-                                  onOpenArtifact={(id) => {
-                                    close();
-                                    openArtifact(id, origin);
-                                  }}
-                                  onSteer={(id) => {
-                                    close();
-                                    openSteering(id, origin);
-                                  }}
-                                  onShowAll={() => {
-                                    close();
-                                    rememberTrigger(origin);
-                                    setListedNodeId(nodeId);
-                                    setSelectedNodeId(nodeId);
-                                    setPanel('selection');
-                                    setDetail('overview');
-                                    setSearch({
-                                      execution: undefined,
-                                      artifact: undefined,
-                                      result: undefined,
-                                      view: undefined,
-                                    });
-                                    requestAnimationFrame(() =>
-                                      detailPane.current?.focus({ preventScroll: true }),
-                                    );
-                                  }}
-                                />
-                                <NodeRunActions
-                                  session={session}
-                                  definition={definition}
-                                  nodeId={nodeId}
-                                />
-                              </>
-                            ) : null
-                          }
-                        />
-                      </div>
-                    </div>
+                    <RunCanvas
+                      session={session}
+                      definition={definition}
+                      display={graphDisplay}
+                      onDisplayChange={setGraphChoice}
+                      onFitWidthZoom={fitZoomed}
+                      selectedNodeId={highlightedNode}
+                      onSelectNode={(id) => setSelectedNodeId(id)}
+                      renderNodePreview={(nodeId, { close, trigger: origin }) =>
+                        projection ? (
+                          <>
+                            <NodeExecutions
+                              projection={projection}
+                              definition={definition}
+                              nodeId={nodeId}
+                              selectedExecutionId={execution ?? null}
+                              preview
+                              onChoose={(id) => {
+                                close();
+                                chooseExecution(id, origin);
+                              }}
+                              onOpenArtifact={(id) => {
+                                close();
+                                openArtifact(id, origin);
+                              }}
+                              onSteer={(id) => {
+                                close();
+                                openSteering(id, origin);
+                              }}
+                              onShowAll={() => {
+                                close();
+                                rememberTrigger(origin);
+                                setListedNodeId(nodeId);
+                                setSelectedNodeId(nodeId);
+                                setPanel('selection');
+                                setDetail('overview');
+                                setSearch({
+                                  execution: undefined,
+                                  artifact: undefined,
+                                  result: undefined,
+                                  view: undefined,
+                                });
+                                requestAnimationFrame(() =>
+                                  detailPane.current?.focus({ preventScroll: true }),
+                                );
+                              }}
+                            />
+                            <NodeRunActions
+                              session={session}
+                              definition={definition}
+                              nodeId={nodeId}
+                            />
+                          </>
+                        ) : null
+                      }
+                    />
                   ),
                 },
                 {
@@ -1076,32 +1070,6 @@ function RunWorkspace({
  * stage starts the graph view as the list.
  */
 const READABLE_MAP_ZOOM = 0.75;
-
-/** The graph view's two displays of one question: the relationship map and the agent list. */
-function GraphDisplayToggle({
-  value,
-  onChange,
-}: {
-  value: 'map' | 'list';
-  onChange: (value: 'map' | 'list') => void;
-}) {
-  const t = useTranslations('RunMonitor.graphDisplay');
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: a labelled pair of toggle buttons, not a form.
-    <div role="group" aria-label={t('label')} className="flex shrink-0 items-center gap-1">
-      {(['map', 'list'] as const).map((option) => (
-        <Button
-          key={option}
-          variant={value === option ? 'secondary' : 'ghost'}
-          aria-pressed={value === option}
-          onClick={() => onChange(option)}
-        >
-          {t(option)}
-        </Button>
-      ))}
-    </div>
-  );
-}
 
 /** A draft belongs to its explicitly opened execution, independently of inspected nodes. */
 function RunInstructions({

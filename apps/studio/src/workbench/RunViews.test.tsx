@@ -91,7 +91,7 @@ it('waits for a hidden workspace to have size, then preserves the initialized vi
   expect(graph?.textContent).toBe('Zoom 2');
 });
 
-it('scrolls the view tabs in the list itself, with the kit edge fade, when they do not fit', async () => {
+it('scrolls the view tabs in the list itself when they do not fit, under a fade short enough to read the cut tab and with room for a chosen tab to come clear of it', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
     'ResizeObserver',
@@ -128,4 +128,8 @@ it('scrolls the view tabs in the list itself, with the kit edge fade, when they 
   expect(list?.classList.contains('overflow-x-auto')).toBe(true);
   expect(list?.classList.contains('scroll-fade-x')).toBe(true);
   expect(list?.parentElement?.classList.contains('overflow-x-auto')).toBe(false);
+  expect(list?.classList.contains('[--scroll-fade-size:1rem]!')).toBe(true);
+  const tabs = [...(list?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
+  expect(tabs.every((tab) => tab.classList.contains('@max-[30rem]:px-2'))).toBe(true);
+  expect(list?.classList.contains('scroll-px-4')).toBe(true);
 });

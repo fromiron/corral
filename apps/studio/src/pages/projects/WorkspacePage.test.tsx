@@ -6,6 +6,7 @@ import type {
   WorktreeView,
 } from '@corral/client';
 import type { NewSession, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
+import { tabStripItem, tabStripList } from '@corral/react/design-kit';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -236,6 +237,29 @@ it('has Conversations, Runs, Environment and Instructions & memory tabs, and no 
   expect(
     [...container.querySelectorAll('button')].some((button) => button.textContent === 'New Corral'),
   ).toBe(false);
+});
+
+it('keeps the tab strip scrolling inside itself under a short fade, tighter where its place is narrow', async () => {
+  const { container } = await render();
+  const list = container.querySelector('[role="tablist"]');
+  for (const name of tabStripList.split(' ')) expect(list?.classList.contains(name)).toBe(true);
+  expect(tabs(container).every((tab) => tab.classList.contains(tabStripItem))).toBe(true);
+  expect(list?.parentElement?.classList.contains('@container')).toBe(true);
+});
+
+it('draws New conversation and the button that opens its menu as one split button', async () => {
+  const { container } = await render();
+  const start = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'New conversation',
+  );
+  const more = container.querySelector('button[aria-label="More ways to start a conversation"]');
+  expect(start?.parentElement).toBe(more?.parentElement);
+  expect(start?.parentElement?.classList.contains('gap-px')).toBe(true);
+  expect(start?.classList.contains('rounded-r-none')).toBe(true);
+  expect(more?.classList.contains('rounded-l-none')).toBe(true);
+  const surface = (button: Element | null | undefined) => button?.querySelector('span')?.className;
+  expect(surface(start)).toBeTruthy();
+  expect(surface(more)).toBe(surface(start));
 });
 
 it('heads the project with its folder state, pending count and actions', async () => {

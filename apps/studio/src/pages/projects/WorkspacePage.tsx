@@ -48,6 +48,8 @@ import {
   Tabs,
   TabsList,
   Textarea,
+  tabStripItem,
+  tabStripList,
   useSize,
 } from '@corral/react/design-kit';
 import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Pin, Users } from '@corral/react/icons';
@@ -429,16 +431,11 @@ function ProjectTabs({
     <Tabs
       value={tab}
       onValueChange={(value) => chooseTab(value as ProjectTab)}
-      className="flex min-w-0 flex-col gap-4"
+      className="@container flex min-w-0 flex-col gap-4"
     >
-      {/* The strip hugs its tabs and scrolls inside itself when the page is narrower; the
-          kit's edge fade shows there is more beyond the cut. */}
-      <TabsList
-        aria-label={t('tabsLabel')}
-        className="scroll-fade-x scrollbar-hide max-w-full self-start overflow-x-auto"
-      >
+      <TabsList aria-label={t('tabsLabel')} className={cn(tabStripList, 'self-start')}>
         {TABS.map((value) => (
-          <TabItem key={value} value={value} label={label(value)} />
+          <TabItem key={value} value={value} label={label(value)} className={tabStripItem} />
         ))}
       </TabsList>
       <TabPanel value={tab} className="min-w-0">
@@ -686,18 +683,18 @@ function NewConversation({
 
   return (
     <>
-      <div className="flex items-center gap-1">
-        <Button disabled={saving} onClick={start}>
+      <div className="flex items-center gap-px">
+        <Button disabled={saving} onClick={start} className="rounded-r-none focus-visible:z-10">
           {tw('newConversation')}
         </Button>
         <Menu>
           <MenuTrigger
             render={
               <Button
-                variant="secondary"
                 size="icon"
                 disabled={saving}
                 aria-label={tw('newConversationMenu')}
+                className="rounded-l-none focus-visible:z-10"
               />
             }
           >
