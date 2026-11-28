@@ -209,4 +209,16 @@ describe('session statistics', () => {
     });
     expect(sessionStats([], () => 0)).toBeNull();
   });
+
+  it('has no token total while no finished call has reported input or output', () => {
+    const live = run();
+    live.modelCalls = {
+      a: call('a', 10, false),
+      b: call('b', null, true, { inputTokens: null, cachedInputTokens: null }),
+    };
+    expect(sessionStats([live], () => 0)?.tokens).toBeNull();
+    const zero = run();
+    zero.modelCalls = { a: call('a', 0, true, { inputTokens: 0, cachedInputTokens: null }) };
+    expect(sessionStats([zero], () => 0)?.tokens).toBe(0);
+  });
 });

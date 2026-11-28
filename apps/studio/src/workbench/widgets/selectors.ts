@@ -731,7 +731,7 @@ export function usageSummary(projection: RunProjection | null): UsageSummary | n
 export interface SessionStats {
   turns: number;
   steps: number;
-  tokens: number;
+  tokens: number | null;
   /** Cached share of input over calls that reported both figures; null when none did. */
   cacheShare: number | null;
   cacheUnreported: number;
@@ -743,12 +743,14 @@ export function sessionStats(
 ): SessionStats | null {
   if (!projections.length) return null;
   let tokens = 0;
+  let reported = 0;
   let cached = 0;
   let cachedOf = 0;
   let cacheUnreported = 0;
   for (const projection of projections)
     for (const call of Object.values(projection.modelCalls)) {
       if (!call.finished) continue;
+      if (call.usage?.inputTokens != null || call.usage?.outputTokens != null) reported += 1;
       tokens += (call.usage?.inputTokens ?? 0) + (call.usage?.outputTokens ?? 0);
       const input = call.usage?.inputTokens;
       const cache = call.usage?.cachedInputTokens;
@@ -762,7 +764,7 @@ export function sessionStats(
   return {
     turns: projections.length,
     steps: projections.reduce((sum, projection) => sum + steps(projection), 0),
-    tokens,
+    tokens: reported ? tokens : null,
     cacheShare: cachedOf ? cached / cachedOf : null,
     cacheUnreported,
   };

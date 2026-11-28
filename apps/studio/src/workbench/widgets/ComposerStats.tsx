@@ -9,7 +9,7 @@ import { sessionStats } from './selectors.ts';
 /**
  * runs · tool and agent steps · reported in/out tokens · cache hit for the session, under the
  * composer (DSH-style), read from each run's Coordinator snapshot. Each figure is named so it
- * needs no definition. An unreported cache figure is named, never 0.
+ * needs no definition. An unreported token or cache figure is named, never 0.
  */
 export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
   const t = useTranslations('Turn');
@@ -42,11 +42,13 @@ export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
     t('statSession'),
     t('statRuns', { count: stats.turns }),
     t('statSteps', { count: stats.steps }),
-    t('statTokens', {
-      tokens: formatCount(stats.tokens, locale, (value) =>
-        format.number(value, { notation: 'compact', maximumFractionDigits: 1 }),
-      ),
-    }),
+    stats.tokens === null
+      ? t('statTokensUnreported')
+      : t('statTokens', {
+          tokens: formatCount(stats.tokens, locale, (value) =>
+            format.number(value, { notation: 'compact', maximumFractionDigits: 1 }),
+          ),
+        }),
     stats.cacheShare === null
       ? t('statCacheUnreported')
       : t('statCache', { share: format.number(stats.cacheShare, { style: 'percent' }) }),
