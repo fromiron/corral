@@ -28,7 +28,7 @@ export async function createXterm(
     monoFontReady(),
   ]);
   const host = document.createElement('div');
-  host.className = 'h-full min-h-64 w-full';
+  host.className = 'h-full min-h-64 w-full font-mono';
   container.append(host);
   const terminal = new Terminal({
     cols,

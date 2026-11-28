@@ -78,6 +78,27 @@ it.each([
   expect(view.style?.fontSize).toBeUndefined();
 });
 
+it.each([
+  [
+    'a diff',
+    <DiffCode
+      key="diff"
+      diff={{ name: 'a.ts', hunks: [] } as unknown as FileDiffMetadata}
+      layout="unified"
+      comments={[]}
+    />,
+  ],
+  ['a source file', <SourceCode key="source" path="a.ts" text="x" onSelect={() => {}} />],
+])(
+  '%s draws its code in the monospace family of the token, with its ligatures off',
+  async (_name, node) => {
+    await render(node);
+    const css = shown.views.at(-1)?.options.unsafeCSS ?? '';
+    expect(css).toMatch(/--diffs-font-family:\s*var\(--font-mono\)/);
+    expect(css).toMatch(/--diffs-font-features:\s*var\(--font-mono--font-feature-settings\)/);
+  },
+);
+
 it.each(['unified', 'split'] as const)(
   'keeps the %s diff comment "+" inside the gutter, off the code',
   async (layout) => {

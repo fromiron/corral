@@ -393,6 +393,14 @@ test('a rapid keyboard burst survives a real HTTP 429 with ordered PTY input and
     await corral.open(`/sessions/${sessionId}?panel=terminal`);
     const panel = terminalScreen(page);
     await expect(panel).toBeVisible();
+    // The terminal draws in the monospace family of the token, with its ligatures off.
+    const drawn = await panel
+      .locator('.xterm-rows')
+      .evaluate((rows) => getComputedStyle(rows))
+      .then(({ fontFamily, fontFeatureSettings }) => ({ fontFamily, fontFeatureSettings }));
+    expect(drawn.fontFamily.startsWith('"JetBrains Mono"')).toBe(true);
+    expect(drawn.fontFeatureSettings).toContain('"liga" 0');
+    expect(drawn.fontFeatureSettings).toContain('"calt" 0');
     await panel.getByRole('button', { name: 'Terminal actions', exact: true }).click();
     await expect(page.getByRole('menuitem', { name: /Release input/ })).toBeVisible();
     await page.keyboard.press('Escape');
