@@ -305,7 +305,7 @@ export const BUILTIN_THEMES: readonly BuiltinTheme[] = [
       ui: {
         background: '#fdf6e3',
         foreground: '#445258',
-        muted: '#616f6f',
+        muted: '#5c6969',
         emphasis: '#2074af',
         selection: '#eee8d5',
         error: '#d72724',
@@ -352,7 +352,7 @@ export const BUILTIN_THEMES: readonly BuiltinTheme[] = [
       ui: {
         background: '#eff1f5',
         foreground: '#4c4f69',
-        muted: '#66687e',
+        muted: '#606277',
         emphasis: '#8839ef',
         selection: '#ccd0da',
         error: '#d20f39',

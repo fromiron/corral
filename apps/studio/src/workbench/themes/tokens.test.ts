@@ -136,11 +136,51 @@ describe('the one token function', () => {
     expect(paletteTokens(pale)['--destructive-contrast']).toBe('#f8f4e8');
   });
 
-  it('writes only lower-case #rrggbb values, and only the tokens it lists', () => {
+  it("lays the kit's overlay on a pointed-at and a chosen row, thinner only where the text needs it", () => {
+    // Bright text keeps the kit's own strengths, as its token file declares them.
+    const kit = declared();
+    expect(kit.get('--hover')).toBe('light-dark(rgb(0 0 0 / 0.04), rgb(255 255 255 / 0.06))');
+    expect(kit.get('--active')).toBe('light-dark(rgb(0 0 0 / 0.07), rgb(255 255 255 / 0.1))');
+    expect(paletteTokens(dark)['--hover']).toBe('rgb(255 255 255 / 0.06)');
+    expect(paletteTokens(dark)['--active']).toBe('rgb(255 255 255 / 0.1)');
+    const bright = { ...light, ui: { ...light.ui, muted: '#505050' } };
+    expect(paletteTokens(bright)['--hover']).toBe('rgb(0 0 0 / 0.04)');
+    expect(paletteTokens(bright)['--active']).toBe('rgb(0 0 0 / 0.07)');
+    // Secondary text close to the limit thins both, in the kit's proportion.
+    const dim: Palette = {
+      ...dark,
+      ui: { ...dark.ui, background: '#282c34', foreground: '#abb2bf', muted: '#a2a6ad' },
+    };
+    const amount = (palette: Palette, name: string) =>
+      Number(/\/ ([\d.]+)\)$/.exec(paletteTokens(palette)[name] as string)?.[1]);
+    expect(amount(dim, '--active')).toBeLessThan(0.1);
+    expect(amount(dim, '--active')).toBeGreaterThanOrEqual(0.03);
+    expect(amount(dim, '--hover') / amount(dim, '--active')).toBeCloseTo(0.6, 1);
+    const tokens = paletteTokens(dim);
+    for (const step of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const row = mix(tokens[`--surface-${step}`] as string, '#ffffff', amount(dim, '--active'));
+      expect(contrastRatio(dim.ui.foreground, row), `text on step ${step}`).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      if (step <= 3)
+        expect(
+          contrastRatio(dim.ui.muted, row),
+          `secondary text on step ${step}`,
+        ).toBeGreaterThanOrEqual(4.5);
+    }
+    // Text the theme itself puts under 4.5:1 (its owner's call) still gets a row fill that shows.
+    const faint: Palette = { ...dark, ui: { ...dark.ui, foreground: '#505050', muted: '#484848' } };
+    expect(paletteTokens(faint)['--active']).toBe('rgb(255 255 255 / 0.03)');
+  });
+
+  it('writes lower-case #rrggbb values and the two row overlays, and only the tokens it lists', () => {
     for (const palette of [dark, light]) {
       const tokens = paletteTokens(palette);
       expect(Object.keys(tokens).sort()).toEqual([...PALETTE_TOKENS].sort());
-      for (const value of Object.values(tokens)) expect(value).toMatch(/^#[0-9a-f]{6}$/);
+      for (const [name, value] of Object.entries(tokens))
+        if (name === '--hover' || name === '--active')
+          expect(value).toMatch(/^rgb\((0 0 0|255 255 255) \/ 0\.\d+\)$/);
+        else expect(value).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
 
@@ -150,9 +190,7 @@ describe('the one token function', () => {
     // A kit or Corral color written as a literal (not a reference to another token) is either
     // computed from the theme or one of the recipes left to the kit on purpose.
     const leftToKit = new Set([
-      // Surface-relative overlays and the shadow recipes follow the base through the scope class.
-      '--hover',
-      '--active',
+      // The overlay's direction and the shadow recipes follow the base through the scope class.
       '--overlay',
       '--shadow-color',
       '--dm-hi-base',
@@ -178,6 +216,46 @@ describe('the one token function', () => {
     );
     expect(uncovered).toEqual([]);
   });
+});
+
+describe('the default light and dark, which no theme function writes', () => {
+  const values = declared();
+  const pair = (name: string, base: 'light' | 'dark') => {
+    const both = /^light-dark\((.+), (.+)\)$/.exec(values.get(name) ?? '');
+    if (!both) throw new Error(`${name} is not a light-dark pair`);
+    return (both[base === 'light' ? 1 : 2] as string).toLowerCase();
+  };
+  const overlay = (name: string, base: 'light' | 'dark') => {
+    const parts = /^rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)$/.exec(pair(name, base));
+    if (!parts) throw new Error(`${name} is not an overlay`);
+    const color = `#${parts
+      .slice(1, 4)
+      .map((channel) => Number(channel).toString(16).padStart(2, '0'))
+      .join('')}`;
+    return { color, amount: Number(parts[4]) };
+  };
+
+  it.each(['light', 'dark'] as const)(
+    'keep text and secondary text at 4.5:1 on a pointed-at or chosen row in %s, as a theme must',
+    (base) => {
+      const surfaces = [1, 2, 3, 4, 5, 6, 7, 8].map((step) => pair(`--surface-${step}`, base));
+      for (const name of ['--hover', '--active']) {
+        const { color, amount } = overlay(name, base);
+        for (const [index, surface] of surfaces.entries()) {
+          const row = mix(surface, color, amount);
+          expect(
+            contrastRatio(pair('--foreground', base), row),
+            `text, ${name} on step ${index + 1}`,
+          ).toBeGreaterThanOrEqual(4.5);
+          if (index < 3)
+            expect(
+              contrastRatio(pair('--muted-foreground', base), row),
+              `secondary text, ${name} on step ${index + 1}`,
+            ).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    },
+  );
 });
 
 describe('text that stays legible on a draft', () => {
