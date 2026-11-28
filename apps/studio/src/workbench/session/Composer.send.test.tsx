@@ -1201,10 +1201,6 @@ describe('Stop in Send’s place', () => {
       }
       expect(cancels(f.sendCommand)).toHaveLength(0);
       expect(asked()).toBe(messages.Reins.cancelRunQuestion);
-      // The question says the stop is not sent yet; the dialog does not write it a second time.
-      expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain(
-        messages.Reins.cancelNotSent,
-      );
       await act(async () => confirmButton()?.click());
       expect(cancels(f.sendCommand)).toHaveLength(1);
     },
