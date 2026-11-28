@@ -122,10 +122,7 @@ test.describe('slow replies', () => {
   });
 });
 
-test('Studio works under the strict CSP, and a tab without a session says so', async ({
-  page,
-  corral,
-}) => {
+async function policyViolations(page: Page): Promise<string[]> {
   const violations: string[] = [];
   await page.exposeFunction('reportViolation', (text: string) => violations.push(text));
   await page.addInitScript(() => {
@@ -135,6 +132,14 @@ test('Studio works under the strict CSP, and a tab without a session says so', a
       );
     });
   });
+  return violations;
+}
+
+test('Studio works under the strict CSP, and a tab without a session says so', async ({
+  page,
+  corral,
+}) => {
+  const violations = await policyViolations(page);
   await corral.open('/');
   await agentToOutput(page);
   await startTestRun(page);
@@ -148,4 +153,29 @@ test('Studio works under the strict CSP, and a tab without a session says so', a
   await other.goto(corral.server.url);
   await expect(other.getByRole('alert')).toContainText('Connect to the local server.');
   await other.close();
+});
+
+test('every subset of the bundled monospace face loads under the strict CSP', async ({
+  page,
+  corral,
+}) => {
+  const violations = await policyViolations(page);
+  await corral.open('/');
+  await expect(page.getByRole('banner')).toBeVisible();
+  // One character from each declared range: Latin, Latin Extended, Cyrillic, Cyrillic Extended,
+  // Greek, Vietnamese. A small subset the build inlines as data would be refused by `font-src`.
+  const statuses = await page.evaluate(async () => {
+    const sample = 'a \u0101 \u044f \u0460 \u03b1 \u1ec7';
+    const probe = document.createElement('code');
+    probe.textContent = sample;
+    document.body.append(probe);
+    await document.fonts.load('14px "JetBrains Mono"', sample).catch(() => undefined);
+    await document.fonts.ready;
+    probe.remove();
+    return [...document.fonts]
+      .filter((face) => face.family.replaceAll('"', '') === 'JetBrains Mono')
+      .map((face) => face.status);
+  });
+  expect(statuses).toEqual(Array(6).fill('loaded'));
+  expect(violations).toEqual([]);
 });
