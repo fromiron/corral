@@ -143,7 +143,9 @@ export const Running: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText('Writer')).toBeVisible();
     await expect(canvas.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '41');
-    await expect(canvas.getByRole('button', { name: 'Research report v1' })).toBeVisible();
+    await expect(
+      canvas.getByRole('button', { name: 'Research report v1 · Writer · execution 1' }),
+    ).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Open Usage details' }));
     await expect(
       within(canvasElement.ownerDocument.body).getByTestId('usage-detail'),
@@ -228,7 +230,9 @@ export const NarrowOverview: Story = {
       expect(bounds.right).toBeLessThanOrEqual(window.innerWidth);
       expect(popup.scrollWidth).toBeLessThanOrEqual(popup.clientWidth);
     });
-    await expect(within(popup).getByRole('button', { name: 'Research report v1' })).toBeVisible();
+    await expect(
+      within(popup).getByRole('button', { name: 'Research report v1 · Writer · execution 1' }),
+    ).toBeVisible();
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(canvas.getByTestId('session-summary-trigger')).toHaveFocus());
   },
