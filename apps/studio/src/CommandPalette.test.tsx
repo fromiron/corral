@@ -391,6 +391,28 @@ it('draws a command’s shortcut one keycap per key, with the plus signs still i
   }
 });
 
+it('draws a Mac shortcut without plus signs, even when its key is the plus key', async () => {
+  setCommands('keycaps', [
+    { id: 'keycaps.mac', title: 'Zoom in', group: 'View', shortcut: '⌘⇧+', run() {} },
+  ]);
+  try {
+    const container = await mount();
+    const row = [...container.querySelectorAll<HTMLElement>('[role="option"]')].find((option) =>
+      option.textContent?.includes('Zoom in'),
+    );
+    if (!row) throw new Error('Missing the command row');
+    const keys = row.querySelector('kbd')?.parentElement;
+    expect([...(keys?.querySelectorAll('kbd') ?? [])].map((key) => key.textContent)).toEqual([
+      '⌘',
+      '⇧',
+      '+',
+    ]);
+    expect(keys?.textContent).toBe('⌘⇧+');
+  } finally {
+    setCommands('keycaps', null);
+  }
+});
+
 it('lists shortcuts with a keycap per key, and names a key button by the keys it shows', async () => {
   const container = document.createElement('div');
   document.body.append(container);

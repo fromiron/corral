@@ -795,13 +795,12 @@ export function Palette({
 }
 
 function ShortcutKeys({ label }: { label: string }) {
-  const keys = shortcutKeys(label);
-  const joined = keys.length > 1 && label.includes('+');
+  const { keys, joiner } = shortcutKeys(label);
   return (
     <span className="inline-flex shrink-0 items-center gap-0.5 text-micro text-muted-foreground">
       {keys.map((key, index) => (
         <Fragment key={key}>
-          {joined && index ? '+' : null}
+          {index ? joiner : null}
           <Keycap>{key}</Keycap>
         </Fragment>
       ))}
