@@ -338,7 +338,7 @@
     "packages/react/src/components/ArtifactViewer.tsx": 9,
     "packages/react/src/components/CodeBlock.tsx": 4,
     "packages/react/src/components/CommandReceipts.tsx": 49,
-    "packages/react/src/components/ComposerToolLine.stories.tsx": 18,
+    "packages/react/src/components/ComposerToolLine.stories.tsx": 15,
     "packages/react/src/components/ContinueDecisions.tsx": 25,
     "packages/react/src/components/CopyTextButton.tsx": 3,
     "packages/react/src/components/CorralLogo.tsx": 4,

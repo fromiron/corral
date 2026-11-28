@@ -131,8 +131,11 @@ export function ComposerCard({
       toolbar="single"
       data-slot="composer-host"
       {...(framed
-        ? { className: 'gap-0 bg-transparent pt-0 shadow-none', style: { boxShadow: 'none' } }
-        : {})}
+        ? {
+            className: '@container/composer gap-0 bg-transparent pt-0 shadow-none',
+            style: { boxShadow: 'none' },
+          }
+        : { className: '@container/composer' })}
       role="region"
       aria-label={label}
       inputRef={inputRef}

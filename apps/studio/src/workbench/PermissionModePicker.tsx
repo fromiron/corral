@@ -1,6 +1,9 @@
 import type { PermissionMode } from '@corral/contracts';
-import { Select } from '@corral/react/design-kit';
+import { Select, Tooltip } from '@corral/react/design-kit';
+import { Shield } from '@corral/react/icons';
+import { cloneElement } from 'react';
 import { useTranslations } from 'use-intl';
+import { FOLD_CHIP, FOLD_MARK } from './chipFold.ts';
 
 /** A request choice, never a mutation of a running task's approval policy. */
 export function PermissionModePicker({
@@ -13,6 +16,7 @@ export function PermissionModePicker({
   disabled?: boolean;
 }) {
   const t = useTranslations('Composer.permissionMode');
+  const folds = value === undefined;
   return (
     <Select
       variant="chip"
@@ -25,6 +29,24 @@ export function PermissionModePicker({
         label: t(mode),
         hint: t(`${mode}Hint`),
       }))}
+      {...(folds
+        ? {
+            icon: (
+              <Shield
+                data-policy-mark=""
+                aria-hidden="true"
+                strokeWidth={1.5}
+                className={FOLD_MARK}
+              />
+            ),
+            className: FOLD_CHIP,
+            trigger: (control) => (
+              <Tooltip content={t('defaultTip')}>
+                {cloneElement(control, { 'data-folds': '' } as Record<string, string>)}
+              </Tooltip>
+            ),
+          }
+        : {})}
     />
   );
 }

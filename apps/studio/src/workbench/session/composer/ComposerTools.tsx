@@ -13,10 +13,11 @@ import {
   Select,
   Tooltip,
 } from '@corral/react/design-kit';
-import { AtSign, FolderOpen, Plus } from '@corral/react/icons';
+import { AtSign, FolderOpen, Plus, Users } from '@corral/react/icons';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { AutoModelMenu } from '../../AutoModelMenu.tsx';
+import { FOLD_CHIP, FOLD_MARK } from '../../chipFold.ts';
 import { LiveVoice } from '../../LiveVoice.tsx';
 import { PermissionModePicker } from '../../PermissionModePicker.tsx';
 import type { ProfileInfo } from '../../useModels.ts';
@@ -162,6 +163,7 @@ export function TeamChoice({
   teamMode,
   corrals,
   isAuto,
+  policyChosen,
   disabled,
   open,
   onOpenChange,
@@ -173,6 +175,7 @@ export function TeamChoice({
   teamMode: 'none' | 'auto';
   corrals: CorralSummary[];
   isAuto: boolean;
+  policyChosen: boolean;
   disabled: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -182,6 +185,7 @@ export function TeamChoice({
   const tc = useTranslations('Composer');
   const router = useRouter();
   const navigate = useNavigate();
+  const folds = policyChosen && !team && teamMode === 'none';
   return (
     // A saved team's name shares the tool line's squeeze with the model chip and ends in an
     // ellipsis: the kit Select's field wrapper (its direct child) may shrink with it. The short
@@ -194,11 +198,28 @@ export function TeamChoice({
         disabled={disabled}
         open={open}
         onOpenChange={onOpenChange}
+        {...(folds
+          ? {
+              icon: (
+                <Users
+                  data-team-mark=""
+                  aria-hidden="true"
+                  strokeWidth={1.5}
+                  className={FOLD_MARK}
+                />
+              ),
+              className: FOLD_CHIP,
+            }
+          : {})}
         // The choice explains Corral in its tooltip (glossary.md); its open menu speaks for itself.
         // A saved team's whole name is the tooltip's state, beside the term (a cut name stays
         // readable); the chip's own name stays.
         trigger={(control) => (
-          <TermTooltip term="corral" closed={open} {...(team ? { state: team.name } : {})}>
+          <TermTooltip
+            term="corral"
+            closed={open}
+            {...(team ? { state: team.name } : folds ? { state: tc('teamNone') } : {})}
+          >
             {control}
           </TermTooltip>
         )}
