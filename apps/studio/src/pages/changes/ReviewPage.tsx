@@ -399,6 +399,15 @@ export function ReviewContent({
   const wide = useThreeColumns(root);
   const [decisionSlot, setDecisionSlot] = useState<HTMLElement | null>(null);
   const [sendSlot, setSendSlot] = useState<HTMLElement | null>(null);
+  // Below the three-column width the list folds into its head once a file is being read; a
+  // fold or unfold made by hand holds for that file.
+  const [fold, setFold] = useState<{ file: string | null; collapsed: boolean } | null>(null);
+  const listFolded = fold && fold.file === selected ? fold.collapsed : selected !== null;
+  const shownFile = listed.find((f) => f.path === selected);
+  const headMark =
+    !wide && listFolded && shownFile && shownFile.provenance !== 'managed_agent' ? (
+      <ProvenanceMark provenance={shownFile.provenance} />
+    ) : undefined;
   const active = runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status));
   const drafts = comments.filter((comment) => comment.state === 'draft').length;
   // While a comment is being written, adding it is the review's one primary action.
@@ -521,6 +530,8 @@ export function ReviewContent({
                 selected={selected}
                 reviewed={reviewed}
                 onChoose={choose}
+                collapsed={listFolded}
+                onFold={(collapsed) => setFold({ file: selected, collapsed })}
                 sinceRead={scope.kind === 'review'}
               />
             </nav>
@@ -542,10 +553,8 @@ export function ReviewContent({
                       selected,
                     )
                   }
-                  mark={changeMark(
-                    reviewed,
-                    changes.files.find((f) => f.path === selected),
-                  )}
+                  mark={changeMark(reviewed, shownFile)}
+                  pathMark={headMark}
                   navigation={hunkNav}
                   comments={comments.filter(
                     (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
@@ -726,8 +735,10 @@ export function FileDiff({
   onComposing,
   navigation,
   fill = false,
+  pathMark,
 }: {
   path: string;
+  pathMark?: ReactNode;
   /** Changes whenever what to load changes. */
   loadKey: string;
   /** Where a comment not added yet is kept after the review goes (the file in this review). */
@@ -895,6 +906,7 @@ export function FileDiff({
             {path.slice(cut)}
           </bdi>
         </h3>
+        {pathMark}
         {layout !== 'raw' && diff && diff !== 'stopped' ? (
           <HunkNavigator
             key={loadKey}
@@ -1876,6 +1888,8 @@ function FileList({
   selected,
   reviewed,
   onChoose,
+  collapsed,
+  onFold,
   sinceRead = false,
 }: {
   changes: ChangeSetView | null;
@@ -1886,6 +1900,8 @@ function FileList({
   selected: string | null;
   reviewed: ReviewMarks;
   onChoose: (path: string) => void;
+  collapsed: boolean;
+  onFold: (collapsed: boolean) => void;
   /** The range lists only what changed since the copy was marked read. */
   sinceRead?: boolean;
 }) {
@@ -1897,11 +1913,7 @@ function FileList({
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | FileChangeView['status']>('all');
   const [unreviewedOnly, setUnreviewedOnly] = useState(false);
-  // Below the three-column width the list folds into its head once a file is being read; a
-  // fold or unfold made by hand holds for that file.
-  const [fold, setFold] = useState<{ file: string | null; collapsed: boolean } | null>(null);
   const files = changes && !changes.unavailable ? changes.files : [];
-  const collapsed = fold && fold.file === selected ? fold.collapsed : selected !== null;
   const needle = query.trim().toLowerCase();
   const matches = files.filter(
     (f) =>
@@ -2015,7 +2027,7 @@ function FileList({
           aria-expanded={!collapsed}
           aria-controls={listId}
           disabled={files.length === 0}
-          onClick={() => setFold({ file: selected, collapsed: !collapsed })}
+          onClick={() => onFold(!collapsed)}
           className={cn(compact ? '-ml-2' : '-ml-3', '@min-[880px]/review:hidden')}
         >
           {count}
