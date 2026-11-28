@@ -15,7 +15,9 @@ vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => {},
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
-vi.mock('../../workbench/ScopeLadder.tsx', () => ({ ScopeLadder: () => null }));
+vi.mock('../../workbench/ScopeLadder.tsx', () => ({
+  ScopeLadder: ({ children }: { children?: React.ReactNode }) => <div data-ladder>{children}</div>,
+}));
 vi.mock('../settings/SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -75,3 +77,18 @@ it.each([1, 2])(
     expect(setDefault).not.toHaveBeenCalled();
   },
 );
+
+it('puts the choice in the ladder and does not name the default a second time beside it', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.api = {
+    default: async () => ({ scope: 'personal', scopeId: 'default', revision: 1, binding: null }),
+    profileManagement: async () => [],
+  } as unknown as HarnessApi;
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  await act(async () => root.render(<HarnessDefaultsPage scope="personal" />));
+  expect(container.querySelector('[data-ladder] select')).not.toBeNull();
+  expect(container.querySelectorAll('select')).toHaveLength(1);
+  expect(container.querySelector('h3')).toBeNull();
+  await act(async () => root.unmount());
+});
