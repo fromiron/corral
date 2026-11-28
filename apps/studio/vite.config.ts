@@ -13,6 +13,8 @@ const serverRuntime: Plugin = {
     html.replace('<head>', '<head><meta name="corral-runtime" content="server">'),
 };
 
+const fontsStayFiles = (file: string) => (file.endsWith('.woff2') ? false : undefined);
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), ...(server ? [serverRuntime] : [])],
   server: {
@@ -22,6 +24,7 @@ export default defineConfig({
   // Opening the lazy file viewer must not restart the in-memory demo runtime.
   optimizeDeps: { include: ['@pierre/diffs/react'] },
   build: {
+    assetsInlineLimit: fontsStayFiles,
     rolldownOptions: {
       // The desktop's annotation overlay is its own page: annotate.html at the build's root,
       // served by the desktop alone (features/browser-annotate.md 계약, decision 44).

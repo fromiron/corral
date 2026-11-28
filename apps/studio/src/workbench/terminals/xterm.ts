@@ -1,8 +1,11 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
+import { monoFontFamily, monoFontReady } from '../monoFont.ts';
 import { resolvedThemeColors } from '../theme-colors.ts';
 import { appliedAppearance } from '../themes/appearance.ts';
 import { TERMINAL_COLOR_TOKENS, terminalTheme } from '../themes/code.ts';
+
+const FONT_SIZE = 14;
 
 export interface XtermRuntime {
   terminal: Terminal;
@@ -22,15 +25,17 @@ export async function createXterm(
     import('@xterm/xterm'),
     import('@xterm/addon-fit'),
     import('@xterm/xterm/css/xterm.css'),
+    monoFontReady(),
   ]);
   const host = document.createElement('div');
-  host.className = 'h-full min-h-64 w-full';
+  host.className = 'h-full min-h-64 w-full font-mono';
   container.append(host);
   const terminal = new Terminal({
     cols,
     rows,
     scrollback: 2000,
-    fontSize: 14,
+    fontFamily: monoFontFamily(),
+    fontSize: FONT_SIZE,
     screenReaderMode: true,
     cursorBlink: false,
     smoothScrollDuration: 0,

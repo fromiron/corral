@@ -42,6 +42,8 @@ const surfaceCSS = `:host {
   --diffs-light-bg: var(--background);
   --diffs-dark-bg: var(--background);
   --diffs-bg-separator-override: var(--muted);
+  --diffs-font-family: var(--font-mono);
+  --diffs-font-features: var(--font-mono--font-feature-settings);
   --diffs-font-size: var(--fs-caption);
   --diffs-line-height: var(--lh-body);
 }`;

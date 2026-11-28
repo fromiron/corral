@@ -215,9 +215,23 @@ test('without a model: edit, task, preview, check, review, stage, commit and pus
   await page.locator('[data-git-side="unstaged"][data-path="app.js"]').click();
   // Review keeps its own first changed file open behind the Git view (workbench.md), so the
   // diff the click opened is the Git view's.
-  await expect(
-    page.getByRole('tabpanel', { name: 'Git', exact: true }).getByTestId('file-diff'),
-  ).toBeVisible();
+  const diff = page.getByRole('tabpanel', { name: 'Git', exact: true }).getByTestId('file-diff');
+  await expect(diff).toBeVisible();
+  // The diff's code lines, in the renderer's shadow root, take the monospace family of the
+  // token with its ligatures off.
+  await expect
+    .poll(() =>
+      diff.evaluate((root) => {
+        const hosts = [root, ...root.querySelectorAll('*')].filter((node) => node.shadowRoot);
+        const line = hosts
+          .map((host) => host.shadowRoot?.querySelector('[data-line]'))
+          .find(Boolean);
+        if (!line) return null;
+        const { fontFamily, fontFeatureSettings } = getComputedStyle(line);
+        return `${fontFamily.split(',')[0]} | ${fontFeatureSettings}`;
+      }),
+    )
+    .toMatch(/^"JetBrains Mono" \| (?=.*"liga" 0)(?=.*"calt" 0)/);
   await commitAndPush(page, 'app.js', 'Print two', 'feature/alpha');
   await expect
     .poll(() => git(remote, 'for-each-ref', '--format=%(refname)', 'refs/heads/feature/alpha'))

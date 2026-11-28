@@ -95,7 +95,9 @@ Appearance is one choice: system, light and dark use the palette above; a built-
 
 ## Typography
 
-Use the kit's six semantic roles. Font family is `Inter, "Pretendard Variable", system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font for Latin and the Pretendard Variable font for Hangul only (by `unicode-range`), and serves both from its own origin; the system font is the fallback while they load. Do not add a remote font request. Code, paths, diffs and the terminal retain a monospace family.
+Use the kit's six semantic roles. Font family is `Inter, "Pretendard Variable", system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font for Latin and the Pretendard Variable font for Hangul only (by `unicode-range`), and serves both from its own origin; the system font is the fallback while they load. Do not add a remote font request.
+
+Code, paths, diffs, the code editor and the terminal use `"JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace` (`font-mono`). The kit names no monospace font, and the system one differs from machine to machine, so the studio bundles the JetBrains Mono variable font the same way as Inter: by `unicode-range`, from its own origin. Its bundled subsets hold no box-drawing or block characters, so those come from the Geist Mono subset that holds them, bundled the same way: both faces advance 0.6em, so a directory tree or a box-drawn table keeps its columns on every machine. Geist Mono draws nothing else. Characters neither face holds, such as arrows, check marks and Hangul, fall through to the system families after them. The coding ligatures are off everywhere: `!=` and `->` stay the characters that were written. The code editor, the terminal and the diff viewer read the family and the ligature setting from the same token. The code editor and the terminal open after every face of the two bundled families has loaded, so they measure their columns with those faces and not with a fallback.
 
 | Role | Size / line height | Typical use |
 |---|---|---|

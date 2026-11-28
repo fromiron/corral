@@ -64,6 +64,17 @@
   --syntax-constant: var(--foreground);
 }
 
+/* The kit names no monospace font. Geist Mono holds only the box-drawing and block characters
+   that the bundled JetBrains Mono subsets lack; the system families after it are the ones the
+   family had before, for characters neither face holds. Ligatures stay off wherever the family
+   is used: `!=` and `->` remain the characters that were written. */
+@theme {
+  --font-mono:
+    "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  --font-mono--font-feature-settings: "liga" 0, "calt" 0;
+}
+
 @theme inline {
   --color-surface: var(--surface);
   --color-raised: var(--raised);

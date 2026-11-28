@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-26T04:32:15.535Z",
+  "generatedAt": "2026-11-28T17:39:55.427Z",
   "node": "v26.13.1",
   "packageManager": "pnpm@10.34.9",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -170,11 +170,41 @@
       ]
     },
     {
+      "name": "@fontsource-variable/geist-mono",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "integrity": "sha512-vBbuwDEo9AkrqADMXOrlAR3DFcJi4/JxeuU43FoiQERnNwsfXNnvxvReZG02cQKmyk4DZkZdBZX3oTDvy2zBAw==",
+      "published": "2026-07-19T03:50:13.385Z",
+      "repository": "git+https://github.com/fontsource/font-files.git",
+      "gitHead": "02b28c06b126c852a5b966b44aef777ca923f6f6",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
+      ]
+    },
+    {
       "name": "@fontsource-variable/inter",
       "version": "5.3.0",
       "license": "OFL-1.1",
       "integrity": "sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==",
       "published": "2026-07-19T03:50:25.793Z",
+      "repository": "git+https://github.com/fontsource/font-files.git",
+      "gitHead": "02b28c06b126c852a5b966b44aef777ca923f6f6",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
+      ]
+    },
+    {
+      "name": "@fontsource-variable/jetbrains-mono",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "integrity": "sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw==",
+      "published": "2026-07-19T03:50:26.648Z",
       "repository": "git+https://github.com/fontsource/font-files.git",
       "gitHead": "02b28c06b126c852a5b966b44aef777ca923f6f6",
       "engines": null,
