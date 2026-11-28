@@ -24,10 +24,9 @@ function textFillAmount(
 const RAISED_STEPS = 7;
 
 const KIT_ROW_OVERLAY = {
-  light: { rgb: '0 0 0', color: BLACK, hover: 0.04, active: 0.07 },
-  dark: { rgb: '255 255 255', color: WHITE, hover: 0.06, active: 0.1 },
+  light: { rgb: '0 0 0', color: BLACK, hover: 0.04, active: 0.07, leastActive: 0.07 },
+  dark: { rgb: '255 255 255', color: WHITE, hover: 0.06, active: 0.1, leastActive: 0.045 },
 } as const;
-const LEAST_ROW_OVERLAY = 0.03;
 const STEPS_WITH_SECONDARY_TEXT_ROWS = 3;
 
 function chosenRowOverlayAmount(
@@ -36,6 +35,7 @@ function chosenRowOverlayAmount(
   text: string,
   secondary: string,
   most: number,
+  least: number,
 ): number {
   const holds = (amount: number) =>
     surfaces.every((surface, index) => {
@@ -45,9 +45,9 @@ function chosenRowOverlayAmount(
         (index >= STEPS_WITH_SECONDARY_TEXT_ROWS || contrastRatio(secondary, row) >= 4.5)
       );
     });
-  for (let step = Math.round(most * 200); step > LEAST_ROW_OVERLAY * 200; step--)
+  for (let step = Math.round(most * 200); step > Math.round(least * 200); step--)
     if (holds(step / 200)) return step / 200;
-  return LEAST_ROW_OVERLAY;
+  return least;
 }
 
 /**
@@ -87,6 +87,7 @@ export function paletteTokens(palette: Palette): Readonly<Record<string, string>
     ui.foreground,
     ui.muted,
     overlay.active,
+    overlay.leastActive,
   );
   const hover = Math.round((overlay.hover * active * 1000) / overlay.active) / 1000;
   Object.assign(tokens, {

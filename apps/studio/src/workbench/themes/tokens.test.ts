@@ -165,7 +165,6 @@ describe('the one token function', () => {
     const amount = (palette: Palette, name: string) =>
       Number(/\/ ([\d.]+)\)$/.exec(paletteTokens(palette)[name] as string)?.[1]);
     expect(amount(dim, '--active')).toBeLessThan(0.1);
-    expect(amount(dim, '--active')).toBeGreaterThanOrEqual(0.03);
     expect(amount(dim, '--hover') / amount(dim, '--active')).toBeCloseTo(0.6, 1);
     const tokens = paletteTokens(dim);
     for (const step of [1, 2, 3, 4, 5, 6, 7, 8]) {
@@ -179,9 +178,38 @@ describe('the one token function', () => {
           `secondary text on step ${step}`,
         ).toBeGreaterThanOrEqual(4.5);
     }
-    // Text the theme itself puts under 4.5:1 (its owner's call) still gets a row fill that shows.
+  });
+
+  it('never thins a row overlay past where a pointed-at row stops standing apart, and not at all in light', () => {
+    const amount = (palette: Palette, name: string) =>
+      Number(/\/ ([\d.]+)\)$/.exec(paletteTokens(palette)[name] as string)?.[1]);
+    const pointedAtApart = (palette: Palette) => {
+      const tokens = paletteTokens(palette);
+      const over = palette.base === 'dark' ? '#ffffff' : '#000000';
+      return [1, 2, 3].map((step) => {
+        const surface = tokens[`--surface-${step}`] as string;
+        return contrastRatio(mix(surface, over, amount(palette, '--hover')), surface);
+      });
+    };
+    // Text the theme itself puts under 4.5:1 (its owner's call) still gets rows that show.
     const faint: Palette = { ...dark, ui: { ...dark.ui, foreground: '#505050', muted: '#484848' } };
-    expect(paletteTokens(faint)['--active']).toBe('rgb(255 255 255 / 0.03)');
+    const tight: Palette = {
+      ...dark,
+      ui: { ...dark.ui, background: '#282c34', foreground: '#abb2bf', muted: '#8f939b' },
+    };
+    for (const palette of [faint, tight]) {
+      expect(paletteTokens(palette)['--active']).toBe('rgb(255 255 255 / 0.045)');
+      expect(paletteTokens(palette)['--hover']).toBe('rgb(255 255 255 / 0.027)');
+      for (const apart of pointedAtApart(palette)) expect(apart).toBeGreaterThanOrEqual(1.07);
+    }
+    // In light the kit's own pointed-at row is already that faint, so nothing is thinned.
+    const lightAndTight: Palette = {
+      ...light,
+      ui: { ...light.ui, background: '#fdf6e3', foreground: '#284b56', muted: '#616f6f' },
+    };
+    expect(paletteTokens(lightAndTight)['--hover']).toBe('rgb(0 0 0 / 0.04)');
+    expect(paletteTokens(lightAndTight)['--active']).toBe('rgb(0 0 0 / 0.07)');
+    for (const apart of pointedAtApart(lightAndTight)) expect(apart).toBeGreaterThanOrEqual(1.07);
   });
 
   it('writes lower-case #rrggbb values and the two row overlays, and only the tokens it lists', () => {
