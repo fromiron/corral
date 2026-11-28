@@ -22,6 +22,8 @@ const monokai = BUILTIN_THEMES.find((theme) => theme.id === 'monokai')?.palette;
 afterEach(() => {
   applyAppearance({ ...parsePreferences(null), theme: 'light' });
   vi.unstubAllGlobals();
+  document.documentElement.style.removeProperty('--font-mono');
+  Object.defineProperty(document, 'fonts', { configurable: true, value: undefined });
 });
 
 function fakeMonaco() {
@@ -140,4 +142,30 @@ it('re-themes once per apply, after the apply returns, and follows a draft that 
   } finally {
     await close();
   }
+});
+
+it('opens the editor in the monospace family of the token with ligatures off, once its face has loaded', async () => {
+  document.documentElement.style.setProperty('--font-mono', '"JetBrains Mono", monospace');
+  const loaded: string[] = [];
+  Object.defineProperty(document, 'fonts', {
+    configurable: true,
+    value: {
+      load: async (font: string) => {
+        loaded.push(font);
+        return [];
+      },
+    },
+  });
+  const editor = await showEditor();
+  await vi.waitFor(() => expect(editor.create).toHaveBeenCalled());
+  expect(loaded).toEqual(['14px "JetBrains Mono", monospace']);
+  expect(editor.create).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({
+      fontFamily: '"JetBrains Mono", monospace',
+      fontLigatures: false,
+      fontSize: 14,
+    }),
+  );
+  await editor.close();
 });

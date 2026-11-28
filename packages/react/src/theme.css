@@ -64,6 +64,13 @@
   --syntax-constant: var(--foreground);
 }
 
+/* The kit names no monospace font. Ligatures stay off wherever the family is used: `!=` and
+   `->` remain the characters that were written. */
+@theme {
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono--font-feature-settings: "liga" 0, "calt" 0;
+}
+
 @theme inline {
   --color-surface: var(--surface);
   --color-raised: var(--raised);

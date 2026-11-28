@@ -5,7 +5,10 @@ import { applyAppearance } from '../themes/appearance.ts';
 import { BUILTIN_THEMES } from '../themes/builtin.ts';
 import { createXterm } from './xterm.ts';
 
-const made = vi.hoisted(() => ({ terminals: [] as { options: Record<string, unknown> }[] }));
+const made = vi.hoisted(() => ({
+  terminals: [] as { options: Record<string, unknown> }[],
+  opened: [] as string[],
+}));
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     options: Record<string, unknown>;
@@ -15,7 +18,9 @@ vi.mock('@xterm/xterm', () => ({
       made.terminals.push(this);
     }
     loadAddon() {}
-    open() {}
+    open() {
+      made.opened.push(String(this.options.fontFamily));
+    }
     onData() {
       return { dispose() {} };
     }
@@ -33,6 +38,8 @@ const tokyo = BUILTIN_THEMES.find((theme) => theme.id === 'tokyo-night')?.palett
 afterEach(() => {
   applyAppearance({ ...parsePreferences(null), theme: 'light' });
   vi.unstubAllGlobals();
+  document.documentElement.style.removeProperty('--font-mono');
+  Object.defineProperty(document, 'fonts', { configurable: true, value: undefined });
 });
 
 it('recolors the same terminal with a named theme’s sixteen colors, and back to xterm’s own', async () => {
@@ -65,5 +72,28 @@ it('recolors the same terminal with a named theme’s sixteen colors, and back t
     'foreground',
   ]);
   expect(made.terminals).toHaveLength(1);
+  runtime.dispose();
+});
+
+it('opens the terminal in the monospace family of the token, once its face has loaded', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false }));
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} });
+  document.documentElement.style.setProperty('--font-mono', '"JetBrains Mono", monospace');
+  const loaded: string[] = [];
+  Object.defineProperty(document, 'fonts', {
+    configurable: true,
+    value: {
+      load: async (font: string) => {
+        await Promise.resolve();
+        loaded.push(font);
+        return [];
+      },
+    },
+  });
+  made.opened.length = 0;
+  const runtime = await createXterm(document.createElement('div'), 80, 24, () => {});
+  expect(made.terminals.at(-1)?.options.fontFamily).toBe('"JetBrains Mono", monospace');
+  expect(loaded).toEqual(['14px "JetBrains Mono", monospace']);
+  expect(made.opened).toEqual(['"JetBrains Mono", monospace']);
   runtime.dispose();
 });

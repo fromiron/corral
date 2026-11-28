@@ -2,6 +2,7 @@ import type { LanguageRefactor, TextRange } from '@corral/contracts';
 import { cn } from '@corral/react/design-kit';
 import type { editor } from 'monaco-editor/editor';
 import { useEffect, useRef } from 'react';
+import { monoFontFamily, monoFontReady } from '../monoFont.ts';
 import { resolvedThemeColors } from '../theme-colors.ts';
 import { appliedAppearance } from '../themes/appearance.ts';
 import { EDITOR_COLOR_TOKENS, editorThemeData } from '../themes/code.ts';
@@ -37,6 +38,7 @@ export interface CodeEditorViewProps {
   className?: string;
 }
 
+const FONT_SIZE = 14;
 const viewStates = new WeakMap<editor.ITextModel, Map<string, editor.ICodeEditorViewState>>();
 
 function revealLines(
@@ -94,8 +96,8 @@ export function CodeEditorView(props: CodeEditorViewProps) {
   useEffect(() => {
     let cancelled = false;
     let cleanup = () => {};
-    void loadMonaco()
-      .then((monaco) => {
+    void Promise.all([loadMonaco(), monoFontReady(FONT_SIZE)])
+      .then(([monaco]) => {
         if (cancelled || !container.current) return;
         applyEditorTheme(monaco);
         const instance = monaco.editor.create(container.current, {
@@ -106,7 +108,9 @@ export function CodeEditorView(props: CodeEditorViewProps) {
           automaticLayout: true,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
-          fontSize: 14,
+          fontFamily: monoFontFamily(),
+          fontLigatures: false,
+          fontSize: FONT_SIZE,
           padding: { top: 12, bottom: 12 },
         });
         editorRef.current = instance;
