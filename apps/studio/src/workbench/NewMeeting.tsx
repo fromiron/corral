@@ -2,16 +2,19 @@ import type { MeetingConfig } from '@corral/contracts';
 import { ModelSelect, profileChoices } from '@corral/react';
 import {
   Button,
+  Collapse,
   Dialog,
+  DialogFooter,
+  DialogHeader,
   DialogPopup,
   DialogTitle,
-  fontWeights,
   Input,
   type ModelOption,
+  ScrollArea,
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Users, X } from '@corral/react/icons';
+import { ChevronRight, Users, X } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -25,6 +28,10 @@ const TEMPLATE = ['architect', 'builder', 'tester'] as const;
 /** A field's persistent label, set like the kit's InputField label above its control. */
 const FIELD_LABEL = 'pl-2.5 text-muted-foreground';
 
+/** A participant's row: its fold, name, model and Remove; the model drops under the name when narrow. */
+const COLUMNS =
+  'grid-cols-[1.75rem_minmax(0,1fr)_1.75rem] @sm:grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_1.75rem]';
+
 interface Draft {
   key: string;
   name: string | null;
@@ -32,7 +39,18 @@ interface Draft {
   role: string;
   prompt: string;
   modelProfile: string;
+  open: boolean;
 }
+
+const blank = (key: string, modelProfile: string): Draft => ({
+  key,
+  name: null,
+  aliases: '',
+  role: '',
+  prompt: '',
+  modelProfile,
+  open: false,
+});
 
 /** Comma-separated callings, without repeats or the participant's own name. */
 function parseAliases(text: string, name: string) {
@@ -118,14 +136,7 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
     available[index % available.length]?.value ?? options[0]?.value ?? '';
   const [title, setTitle] = useState(t('defaultTitle'));
   const [draftParticipants, setParticipants] = useState<Draft[]>(() =>
-    TEMPLATE.map((id, index) => ({
-      key: id,
-      name: null,
-      aliases: '',
-      role: '',
-      prompt: '',
-      modelProfile: pick(index),
-    })),
+    TEMPLATE.map((id, index) => blank(id, pick(index))),
   );
   const usedNames = new Set([
     'secretary',
@@ -211,232 +222,249 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
         if (!next && !saving) onClose();
       }}
     >
-      <DialogPopup size="lg" className="flex max-h-[90dvh] flex-col gap-4 overflow-auto">
-        <DialogTitle>{t('newTitle')}</DialogTitle>
-        <form id={formId} className="flex flex-col gap-4 text-body" onSubmit={create}>
-          <label className="flex flex-col gap-1">
-            <span className={FIELD_LABEL}>{t('title')}</span>
-            <Input
-              value={title}
-              maxLength={120}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </label>
-          {/* The numbered cards show this is the participant list; its name is for assistive technology. */}
-          <fieldset className="flex min-w-0 flex-col gap-3">
-            <legend className="sr-only">{t('participants')}</legend>
-            {participants.map((item, index) => {
-              const number = index + 1;
-              const heading = `${formId}-participant-${item.key}`;
-              return (
-                // Named by its heading rather than a legend, so the heading shares a row with
-                // the remove button without lending it its name.
-                <fieldset
-                  key={item.key}
-                  aria-labelledby={heading}
-                  className="@container flex min-w-0 flex-col gap-2 rounded fill-group p-3"
+      <DialogPopup size="lg" className="overflow-hidden">
+        <form
+          id={formId}
+          className="grid max-h-[calc(90dvh-3rem)] grid-rows-[auto_minmax(0,1fr)_auto] text-body"
+          onSubmit={create}
+        >
+          <DialogHeader>
+            <DialogTitle>{t('newTitle')}</DialogTitle>
+          </DialogHeader>
+          <ScrollArea scrollFade className="-m-1 h-auto w-[calc(100%+0.5rem)]">
+            <div className="flex flex-col gap-4 p-1">
+              <label className="flex flex-col gap-1">
+                <span className={FIELD_LABEL}>{t('title')}</span>
+                <Input
+                  value={title}
+                  maxLength={120}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </label>
+              <fieldset className="@container flex min-w-0 flex-col gap-1">
+                <legend className="sr-only">{t('participants')}</legend>
+                <div
+                  aria-hidden
+                  className={`hidden gap-2 px-1.5 text-muted-foreground @sm:grid ${COLUMNS}`}
                 >
-                  <div className="flex min-h-7 items-center justify-between gap-2">
-                    <h3
-                      id={heading}
-                      className="text-body"
-                      style={{ fontVariationSettings: fontWeights.semibold }}
+                  <span className="col-start-2 pl-2.5">{t('nameLabel')}</span>
+                  <span className="pl-2.5">{t('modelLabel')}</span>
+                </div>
+                {participants.map((item, index) => {
+                  const number = index + 1;
+                  const details = `${formId}-details-${item.key}`;
+                  return (
+                    <fieldset
+                      key={item.key}
+                      aria-label={t('participantDefault', { number })}
+                      className={`min-w-0 rounded p-1.5 transition-colors motion-reduce:transition-none ${item.open ? 'fill-group' : ''}`}
                     >
-                      {t('participantDefault', { number })}
-                    </h3>
-                    {participants.length > 2 ? (
-                      <Tooltip content={t('removeParticipant', { number })}>
-                        <Button
-                          type="button"
-                          size="icon-compact"
-                          variant="ghost"
-                          aria-label={t('removeParticipant', { number })}
-                          onClick={() =>
-                            setParticipants((current) => current.filter((x) => x.key !== item.key))
-                          }
-                        >
-                          <X aria-hidden />
-                        </Button>
-                      </Tooltip>
-                    ) : null}
-                  </div>
-                  {/* The short visible labels read under the card's heading; each control's
-                      own name still says whose field it is. */}
-                  <div className="grid gap-2 @sm:grid-cols-2">
-                    <label className="flex min-w-0 flex-col gap-1">
-                      <span aria-hidden className={FIELD_LABEL}>
-                        {t('nameLabel')}
-                      </span>
-                      <Input
-                        aria-label={t('participantName', { number })}
-                        value={item.name}
-                        maxLength={40}
-                        required
-                        onChange={(event) => change(item.key, { name: event.target.value })}
-                      />
-                    </label>
-                    <div className="flex min-w-0 flex-col gap-1">
-                      <span aria-hidden className={FIELD_LABEL}>
-                        {t('modelLabel')}
-                      </span>
-                      <ModelSelect
-                        label={t('participantModel', { number })}
-                        value={item.modelProfile}
-                        options={choices}
-                        onValueChange={(modelProfile) => change(item.key, { modelProfile })}
-                      />
-                    </div>
-                  </div>
-                  <label className="flex flex-col gap-1">
-                    <span aria-hidden className={FIELD_LABEL}>
-                      {t('aliasesLabel')}
-                    </span>
-                    <Input
-                      aria-label={t('participantAliases', { number })}
-                      placeholder={t('aliasesPlaceholder')}
-                      value={item.aliases}
-                      maxLength={340}
-                      onChange={(event) => change(item.key, { aliases: event.target.value })}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span aria-hidden className={FIELD_LABEL}>
-                      {t('roleTagLabel')}
-                    </span>
-                    <Input
-                      aria-label={t('participantRoleTag', { number })}
-                      value={item.role}
-                      maxLength={40}
-                      onChange={(event) => change(item.key, { role: event.target.value })}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span aria-hidden className={FIELD_LABEL}>
-                      {t('roleDescriptionLabel')}
-                    </span>
-                    {/* Two lines to start; the field grows with what is written. */}
-                    <Textarea
-                      size="sm"
-                      className="[&_textarea]:min-h-[calc(2lh+0.75rem)]"
-                      aria-label={t('participantRoleDescription', { number })}
-                      value={item.prompt}
-                      maxLength={4000}
-                      rows={2}
-                      onChange={(event) => change(item.key, { prompt: event.target.value })}
-                    />
-                  </label>
-                </fieldset>
-              );
-            })}
-            <div className="flex flex-wrap gap-2">
-              {participants.length < 6 ? (
-                <Button
-                  type="button"
-                  size="compact"
-                  variant="tertiary"
-                  onClick={() =>
-                    setParticipants((current) => [
-                      ...current,
-                      {
-                        key: `extra_${globalThis.crypto.randomUUID()}`,
-                        name: null,
-                        aliases: '',
-                        role: '',
-                        prompt: '',
-                        modelProfile: pick(current.length),
-                      },
-                    ])
-                  }
-                >
-                  {t('addParticipant')}
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                size="compact"
-                variant="tertiary"
-                onClick={() =>
-                  setParticipants((current) =>
-                    current.map((item, index) => {
-                      const role = TEMPLATE[index];
-                      return role
-                        ? {
-                            ...item,
-                            name: t(`template.${role}.name`),
-                            prompt: t(`template.${role}.role`),
-                          }
-                        : item;
-                    }),
-                  )
-                }
-              >
-                {t('applyDevelopmentRoles')}
-              </Button>
-            </div>
-          </fieldset>
-          {liveModels && profiles === null ? (
-            <p role="status" className="text-muted-foreground">
-              {t('modelsLoading')}
-            </p>
-          ) : null}
-          {liveModels && profiles !== null && !available.length ? (
-            <p role="alert" className="text-danger">
-              {t('noConnectedModels')}
-            </p>
-          ) : null}
-          {liveModels && profiles !== null && unavailable.length ? (
-            <div role="alert" className="flex flex-col gap-2">
-              <p className="text-danger">
-                {t('unavailableParticipants', {
-                  names: unavailable.map((item) => item.name).join(', '),
+                      <div className={`grid items-center gap-2 ${COLUMNS}`}>
+                        <Tooltip content={t('participantDetails', { number })}>
+                          <Button
+                            type="button"
+                            size="icon-compact"
+                            variant="ghost"
+                            aria-label={t('participantDetails', { number })}
+                            aria-expanded={item.open}
+                            aria-controls={details}
+                            onClick={() => change(item.key, { open: !item.open })}
+                          >
+                            <ChevronRight
+                              aria-hidden
+                              className={`transition-transform duration-(--duration-fast) motion-reduce:transition-none ${item.open ? 'rotate-90' : ''}`}
+                            />
+                          </Button>
+                        </Tooltip>
+                        <Input
+                          aria-label={t('participantName', { number })}
+                          value={item.name}
+                          maxLength={40}
+                          required
+                          onChange={(event) => change(item.key, { name: event.target.value })}
+                        />
+                        <div className="col-start-2 row-start-2 min-w-0 @sm:col-start-3 @sm:row-start-1">
+                          <ModelSelect
+                            label={t('participantModel', { number })}
+                            value={item.modelProfile}
+                            options={choices}
+                            onValueChange={(modelProfile) => change(item.key, { modelProfile })}
+                          />
+                        </div>
+                        {participants.length > 2 ? (
+                          <Tooltip content={t('removeParticipant', { number })}>
+                            <Button
+                              type="button"
+                              size="icon-compact"
+                              variant="ghost"
+                              className="col-start-3 row-start-1 @sm:col-start-4"
+                              aria-label={t('removeParticipant', { number })}
+                              onClick={() =>
+                                setParticipants((current) =>
+                                  current.filter((x) => x.key !== item.key),
+                                )
+                              }
+                            >
+                              <X aria-hidden />
+                            </Button>
+                          </Tooltip>
+                        ) : null}
+                      </div>
+                      <Collapse id={details} open={item.open}>
+                        <div className="grid gap-2 px-9 pt-2 pb-1.5 @sm:grid-cols-[minmax(0,1fr)_7.5rem]">
+                          <label className="flex min-w-0 flex-col gap-1">
+                            <span aria-hidden className={FIELD_LABEL}>
+                              {t('aliasesLabel')}
+                            </span>
+                            <Input
+                              aria-label={t('participantAliases', { number })}
+                              placeholder={t('aliasesPlaceholder')}
+                              value={item.aliases}
+                              maxLength={340}
+                              onChange={(event) =>
+                                change(item.key, { aliases: event.target.value })
+                              }
+                            />
+                          </label>
+                          <label className="flex min-w-0 flex-col gap-1">
+                            <span aria-hidden className={FIELD_LABEL}>
+                              {t('roleTagLabel')}
+                            </span>
+                            <Input
+                              aria-label={t('participantRoleTag', { number })}
+                              value={item.role}
+                              maxLength={40}
+                              onChange={(event) => change(item.key, { role: event.target.value })}
+                            />
+                          </label>
+                          <label className="flex min-w-0 flex-col gap-1 @sm:col-span-2">
+                            <span aria-hidden className={FIELD_LABEL}>
+                              {t('roleDescriptionLabel')}
+                            </span>
+                            <Textarea
+                              size="sm"
+                              className="[&_textarea]:min-h-[calc(2lh+0.75rem)]"
+                              aria-label={t('participantRoleDescription', { number })}
+                              value={item.prompt}
+                              maxLength={4000}
+                              rows={2}
+                              onChange={(event) => change(item.key, { prompt: event.target.value })}
+                            />
+                          </label>
+                        </div>
+                      </Collapse>
+                    </fieldset>
+                  );
                 })}
-              </p>
-              {participants.length - unavailable.length >= 2 ? (
-                <div>
+                <div className="flex flex-wrap gap-2 pt-1 pl-[2.625rem]">
+                  {participants.length < 6 ? (
+                    <Button
+                      type="button"
+                      size="compact"
+                      variant="tertiary"
+                      onClick={() =>
+                        setParticipants((current) => [
+                          ...current,
+                          blank(`extra_${globalThis.crypto.randomUUID()}`, pick(current.length)),
+                        ])
+                      }
+                    >
+                      {t('addParticipant')}
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     size="compact"
                     variant="tertiary"
                     onClick={() =>
                       setParticipants((current) =>
-                        current.filter((item) => isAvailable(item.modelProfile)),
+                        current.map((item, index) => {
+                          const role = TEMPLATE[index];
+                          return role
+                            ? {
+                                ...item,
+                                name: t(`template.${role}.name`),
+                                prompt: t(`template.${role}.role`),
+                                open: true,
+                              }
+                            : item;
+                        }),
                       )
                     }
                   >
-                    {t('removeUnavailable')}
+                    {t('applyDevelopmentRoles')}
                   </Button>
                 </div>
+              </fieldset>
+              <div className="flex flex-col gap-1">
+                <span aria-hidden className={FIELD_LABEL}>
+                  {t('secretaryModel')}
+                </span>
+                <ModelSelect
+                  label={t('secretaryModel')}
+                  value={secretary}
+                  options={choices}
+                  onValueChange={setSecretary}
+                />
+              </div>
+            </div>
+          </ScrollArea>
+          <div>
+            <div className="mt-4 flex flex-col gap-2 empty:hidden">
+              {liveModels && profiles === null ? (
+                <p role="status" className="text-muted-foreground">
+                  {t('modelsLoading')}
+                </p>
+              ) : null}
+              {liveModels && profiles !== null && !available.length ? (
+                <p role="alert" className="text-danger">
+                  {t('noConnectedModels')}
+                </p>
+              ) : null}
+              {liveModels && profiles !== null && unavailable.length ? (
+                <div role="alert" className="flex flex-col gap-2">
+                  <p className="text-danger">
+                    {t('unavailableParticipants', {
+                      names: unavailable.map((item) => item.name).join(', '),
+                    })}
+                  </p>
+                  {participants.length - unavailable.length >= 2 ? (
+                    <div>
+                      <Button
+                        type="button"
+                        size="compact"
+                        variant="tertiary"
+                        onClick={() =>
+                          setParticipants((current) =>
+                            current.filter((item) => isAvailable(item.modelProfile)),
+                          )
+                        }
+                      >
+                        {t('removeUnavailable')}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {liveModels && profiles !== null && !isAvailable(secretary) ? (
+                <p role="alert" className="text-danger">
+                  {t('secretaryUnavailable')}
+                </p>
+              ) : null}
+              {error ? (
+                <p role="alert" className="text-danger wrap-anywhere">
+                  {error}
+                </p>
               ) : null}
             </div>
-          ) : null}
-          <div className="flex flex-col gap-1">
-            <span aria-hidden className={FIELD_LABEL}>
-              {t('secretaryModel')}
-            </span>
-            <ModelSelect
-              label={t('secretaryModel')}
-              value={secretary}
-              options={choices}
-              onValueChange={setSecretary}
-            />
-            {liveModels && profiles !== null && !isAvailable(secretary) ? (
-              <p role="alert" className="text-danger">
-                {t('secretaryUnavailable')}
-              </p>
-            ) : null}
-          </div>
-          {error ? (
-            <p role="alert" className="text-danger wrap-anywhere">
-              {error}
-            </p>
-          ) : null}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="tertiary" disabled={saving} onClick={onClose}>
-              {t('cancel')}
-            </Button>
-            <Button type="submit" disabled={saving || !ready}>
-              {saving ? t('creating') : t('create')}
-            </Button>
+            <DialogFooter>
+              <Button type="button" variant="tertiary" disabled={saving} onClick={onClose}>
+                {t('cancel')}
+              </Button>
+              <Button type="submit" disabled={saving || !ready}>
+                {saving ? t('creating') : t('create')}
+              </Button>
+            </DialogFooter>
           </div>
         </form>
       </DialogPopup>

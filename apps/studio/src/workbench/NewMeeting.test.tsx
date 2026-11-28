@@ -29,6 +29,14 @@ vi.mock('@corral/react/design-kit', async (importOriginal) => ({
   DialogPopup: ({ children }: any) => <div role="dialog">{children}</div>,
   DialogTitle: ({ children }: any) => <h2>{children}</h2>,
   DialogDescription: ({ children }: any) => <p>{children}</p>,
+  DialogHeader: ({ children }: any) => <div>{children}</div>,
+  DialogFooter: ({ children }: any) => <div>{children}</div>,
+  ScrollArea: ({ children }: any) => <div data-scrolls>{children}</div>,
+  Collapse: ({ id, open, children }: any) => (
+    <div id={id} inert={!open || undefined}>
+      {children}
+    </div>
+  ),
   Tooltip: ({ children }: any) => children,
   Select: ({ label, options, value, onValueChange }: any) => (
     <select
@@ -118,6 +126,19 @@ function visibleTexts(root: Element) {
   return texts;
 }
 
+/** The fields a person can reach: a folded participant's own stay in the page but inert. */
+const shownFields = (root: Element) =>
+  [...root.querySelectorAll<HTMLElement>('input, select, textarea')].filter(
+    (field) => !field.closest('[inert], [hidden]'),
+  );
+
+const fold = (f: { container: Element }, number: number) =>
+  f.container.querySelector<HTMLButtonElement>(`button[aria-label="participantDetails${number}"]`)!;
+
+async function unfold(f: { container: Element }, number: number) {
+  await act(async () => fold(f, number).click());
+}
+
 const labelText = (ids: string) =>
   ids
     .split(/\s+/)
@@ -134,28 +155,68 @@ function accessibleName(element: Element) {
   return element.textContent?.trim() ?? '';
 }
 
-/** The name of the participant group a field sits in: a nested fieldset's legend or a labelled group. */
+/** The name of the participant group a field sits in. */
 function groupName(element: Element) {
   const group = element.closest('fieldset fieldset, [role="group"]');
   if (!group) return null;
   const labelledBy = group.getAttribute('aria-labelledby');
   if (labelledBy) return labelText(labelledBy);
-  return group.querySelector(':scope > legend')?.textContent?.trim() ?? null;
+  return (
+    group.getAttribute('aria-label') ??
+    group.querySelector(':scope > legend')?.textContent?.trim() ??
+    null
+  );
 }
 
-it('names each participant once on its card, and every field keeps a distinct accessible name', async () => {
+it('shows the meeting name, each participant’s name and model, the secretary model and the two buttons first', async () => {
+  const f = await mount([profile('connected')]);
+  expect(shownFields(f.container).map(accessibleName)).toEqual([
+    'title',
+    'participantName1',
+    'participantModel1',
+    'participantName2',
+    'participantModel2',
+    'participantName3',
+    'participantModel3',
+    'secretaryModel',
+  ]);
+  expect(f.button('cancel')).toBeDefined();
+  expect(f.button('create')).toBeDefined();
+  expect([1, 2, 3].map((number) => fold(f, number).getAttribute('aria-expanded'))).toEqual([
+    'false',
+    'false',
+    'false',
+  ]);
+});
+
+it('opens one participant’s nicknames, role label and role description from its row', async () => {
+  const f = await mount([profile('connected')]);
+  await unfold(f, 2);
+  expect(fold(f, 2).getAttribute('aria-expanded')).toBe('true');
+  const opened = document.getElementById(fold(f, 2).getAttribute('aria-controls') ?? '');
+  expect(opened && shownFields(opened).map(accessibleName)).toEqual([
+    'participantAliases2',
+    'participantRoleTag2',
+    'participantRoleDescription2',
+  ]);
+  expect(shownFields(f.container)).toHaveLength(11);
+  await unfold(f, 2);
+  expect(fold(f, 2).getAttribute('aria-expanded')).toBe('false');
+  expect(shownFields(f.container)).toHaveLength(8);
+});
+
+it('names no participant in the form’s text, and every control keeps a distinct accessible name', async () => {
   const f = await mount([
     { ...profile('first'), label: 'First model' },
     { ...profile('second'), label: 'Second model' },
   ]);
   const form = f.container.querySelector('form');
   if (!form) throw new Error('Missing the new meeting form');
-  // The number shows once per card, on its heading, and on none of its fields.
-  expect(visibleTexts(form).filter((text) => /\d/.test(text))).toEqual([
-    'participantDefault1',
-    'participantDefault2',
-    'participantDefault3',
-  ]);
+  // A row is its name and model; the number is in the controls' names only.
+  expect(visibleTexts(form).filter((text) => /\d/.test(text))).toEqual([]);
+  // The two column words show once, above the rows.
+  expect(visibleTexts(form).filter((text) => text === 'nameLabel')).toHaveLength(1);
+  expect(visibleTexts(form).filter((text) => text === 'modelLabel')).toHaveLength(1);
   // The comma rule and what callings do sit in the nickname field, not in a sentence above it.
   expect(form.textContent).not.toContain('participantAliasesHint');
   const controls = [...form.querySelectorAll('input, textarea, select, button')];
@@ -165,6 +226,7 @@ it('names each participant once on its card, and every field keeps a distinct ac
     const own = [
       `participantName${number}`,
       `participantModel${number}`,
+      `participantDetails${number}`,
       `participantAliases${number}`,
       `participantRoleTag${number}`,
       `participantRoleDescription${number}`,
@@ -173,7 +235,8 @@ it('names each participant once on its card, and every field keeps a distinct ac
     expect(own.every(Boolean)).toBe(true);
     for (const control of own as Element[])
       expect(groupName(control)).toBe(`participantDefault${number}`);
-    const [, , aliases, , , remove] = own as [
+    const [, , details, aliases, , , remove] = own as [
+      Element,
       Element,
       Element,
       HTMLInputElement,
@@ -182,7 +245,8 @@ it('names each participant once on its card, and every field keeps a distinct ac
       Element,
     ];
     expect(aliases.placeholder).toBe('aliasesPlaceholder');
-    // Remove is an icon button: its name is for assistive technology, not a line of red text.
+    // The fold and Remove are icon buttons: their names are for assistive technology.
+    expect(details.textContent?.trim()).toBe('');
     expect(remove.textContent?.trim()).toBe('');
   }
 });
@@ -212,6 +276,9 @@ it('saves what the person calls each participant, and leaves it out when blank',
   ];
   const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input[required]')];
   expect(aliases).toHaveLength(3);
+  expect(shownFields(f.container)).not.toContain(aliases[0]);
+  await unfold(f, 1);
+  expect(shownFields(f.container)).toContain(aliases[0]);
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
       aliases[0],
@@ -219,6 +286,9 @@ it('saves what the person calls each participant, and leaves it out when blank',
     );
     aliases[0]!.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  // Folding it again keeps what was written.
+  await unfold(f, 1);
+  expect(shownFields(f.container)).not.toContain(aliases[0]);
   const meeting = await submit(f);
   expect(meeting?.participants[0]?.aliases).toEqual(['루나', 'Luna']);
   expect(meeting?.participants[1]).not.toHaveProperty('aliases');
@@ -237,6 +307,9 @@ it('saves a short role label and leaves it out when blank', async () => {
     'participantRoleDescription2',
     'participantRoleDescription3',
   ]);
+  await unfold(f, 1);
+  expect(shownFields(f.container)).toContain(roles[0]);
+  expect(shownFields(f.container)).toContain(descriptions[0]);
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
       roles[0],
@@ -261,6 +334,17 @@ it('development roles are explicit and stay editable', async () => {
     'template.tester.name',
   ]);
   const role = f.container.querySelector('textarea')!;
+  // What it wrote is open to read and edit, on the three participants it wrote to.
+  expect([1, 2, 3].map((number) => fold(f, number).getAttribute('aria-expanded'))).toEqual([
+    'true',
+    'true',
+    'true',
+  ]);
+  expect(
+    shownFields(f.container)
+      .filter((field) => field.tagName === 'TEXTAREA')
+      .map((field) => (field as HTMLTextAreaElement).value),
+  ).toEqual(['template.architect.role', 'template.builder.role', 'template.tester.role']);
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
       names[0],
@@ -363,6 +447,35 @@ it('unavailable roles remain visible until the person removes them before creati
   const meeting = f.createSession.mock.calls[0]?.[0].meeting;
   expect(meeting?.participants).toHaveLength(2);
   expect(meeting?.participants.every((item) => item.modelProfile === 'ready')).toBe(true);
+});
+
+it('says why Create is off beside it, outside the part that scrolls', async () => {
+  const f = await mount(null);
+  const beside = (text: string) => {
+    const said = [...f.container.querySelectorAll('[role="status"], [role="alert"]')].find((item) =>
+      item.textContent?.includes(text),
+    );
+    return Boolean(said) && !said?.closest('[data-scrolls]');
+  };
+  expect(beside('modelsLoading')).toBe(true);
+  state.profiles = [profile('offline', false)];
+  await f.render();
+  expect(beside('noConnectedModels')).toBe(true);
+  state.profiles = [profile('ready'), profile('offline', false)];
+  await f.render();
+  const pick = async (label: string) => {
+    const model = f.container.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!;
+    await act(async () => {
+      model.value = 'offline';
+      model.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  };
+  await pick('participantModel2');
+  await pick('secretaryModel');
+  expect(beside('unavailableParticipants')).toBe(true);
+  expect(beside('secretaryUnavailable')).toBe(true);
+  expect(f.button('removeUnavailable')?.closest('[data-scrolls]')).toBeNull();
+  expect(f.button('create')?.disabled).toBe(true);
 });
 
 it('uses readable numbered participant names for simulated models', async () => {

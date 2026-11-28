@@ -254,7 +254,13 @@ function VisibleProbe() {
 }
 
 /** The session conversation with its runs' rows, the tray, and optionally the run record. */
-async function show(runIds: string[], { record = false }: { record?: boolean } = {}) {
+/** A request of the session, as the tray reads it: what was written, and the run it went to. */
+type Asked = { runId: string; intent: 'next' | 'queue' | 'steer' | 'explain'; text: string };
+
+async function show(
+  runIds: string[],
+  { record = false, entries = [] }: { record?: boolean; entries?: Asked[] } = {},
+) {
   const tray = createPendingTrayStore();
   const respond = vi.fn();
   const container = document.createElement('div');
@@ -286,6 +292,7 @@ async function show(runIds: string[], { record = false }: { record?: boolean } =
               <PendingTray
                 sessionId={SESSION}
                 runs={runIds.map((runId) => summary(runId))}
+                entries={entries}
                 onOpenArtifact={vi.fn()}
               />
             }
@@ -953,6 +960,7 @@ async function conversations(runsOf: Record<string, string[]>) {
               tray={
                 <PendingTray
                   sessionId={sessionId}
+                  entries={[]}
                   runs={(runsOf[sessionId] ?? []).map((runId) =>
                     summary(runId, 'awaiting_user', sessionId),
                   )}
@@ -1415,6 +1423,71 @@ it('names the run, and its role, on each card while several runs wait', async ()
   });
   expect(trayOf(container)?.querySelector('[data-question]')).not.toBeNull();
   expect(trayOf(container)?.querySelector('[data-request-owner]')).toBeNull();
+});
+
+it('adds the first line of the request that started each run while several runs wait', async () => {
+  const a = waitingRun('run_a', { questions: ['Which layout should I keep?'] });
+  withRoles(a, 'writer:Assistant');
+  const b = waitingRun('run_b', {
+    approvals: [decision('approval_b'), decision('approval_limit', { limit: roundLimit })],
+  });
+  const { container } = await show(['run_a', 'run_b'], {
+    entries: [
+      { runId: 'run_a', intent: 'next', text: '\n  Fix the login redirect  \nand add a test' },
+      // An instruction sent to a run did not start it.
+      { runId: 'run_b', intent: 'steer', text: 'Use the smaller palette' },
+      { runId: 'run_b', intent: 'queue', text: `Add a dark theme ${'and more '.repeat(10)}` },
+    ],
+  });
+  const tray = trayOf(container);
+  const first = tray?.querySelector('[data-run-response="run_a"] [data-request-owner]');
+  // The number, the request, then the role, on one line under the title.
+  expect(first?.textContent).toBe('Run #1 · Fix the login redirect · Assistant');
+  expect(first?.querySelector('[data-request-of-run]')?.textContent).toContain(
+    'Fix the login redirect',
+  );
+  expect(
+    tray?.querySelector('[data-approval="approval_b"] [data-request-owner]')?.textContent,
+  ).toBe(`Run #2 · Add a dark theme ${'and more '.repeat(10)}`.trimEnd());
+  // A continue-or-stop decision carries it in its first line of detail, cut at sixty characters.
+  expect(
+    tray?.querySelector('[data-run-response="run_b"] [data-continue-decisions]')?.textContent,
+  ).toContain(`Run #2 · ${`Add a dark theme ${'and more '.repeat(10)}`.slice(0, 60)}…\n`);
+  // The areas keep their short names, and no internal ID is read out or shown.
+  expect(
+    [...(tray?.querySelectorAll('[data-testid="run-needs-you"]') ?? [])].map((area) =>
+      area.getAttribute('aria-label'),
+    ),
+  ).toEqual(['Run #1 · Waiting for you', 'Run #2 · Waiting for you']);
+  expect(visibleText(tray as HTMLElement)).not.toMatch(/run_[ab]/);
+  // Once one run is left, its cards say neither the number nor the request.
+  await act(async () => {
+    closeApproval(b, 'approval_b', 'approve');
+    closeApproval(b, 'approval_limit', 'approve');
+  });
+  expect(trayOf(container)?.querySelector('[data-question]')).not.toBeNull();
+  expect(trayOf(container)?.querySelector('[data-request-owner]')).toBeNull();
+  expect(trayOf(container)?.textContent).not.toContain('Fix the login redirect');
+});
+
+it('keeps a long request to one line’s worth, and a run started without one to its number', async () => {
+  waitingRun('run_a', { approvals: [decision('approval_a')] });
+  waitingRun('run_b', { approvals: [decision('approval_b')] });
+  const { container } = await show(['run_a', 'run_b'], {
+    entries: [{ runId: 'run_a', intent: 'next', text: `${'가'.repeat(199)}😀😀 and the rest` }],
+  });
+  const tray = trayOf(container);
+  const request = tray?.querySelector('[data-approval="approval_a"] [data-request-of-run]');
+  // By code point: a character outside the basic plane is never cut in half.
+  expect(Array.from(request?.textContent ?? '').length).toBeLessThanOrEqual(204);
+  expect(request?.textContent).toContain(`${'가'.repeat(199)}😀`);
+  expect(request?.textContent).not.toContain('😀😀');
+  expect(request?.textContent).not.toMatch(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+  );
+  const second = tray?.querySelector('[data-approval="approval_b"] [data-request-owner]');
+  expect(second?.textContent).toBe('Run #2');
+  expect(second?.querySelector('[data-request-of-run]')).toBeNull();
 });
 
 it('names each run’s area by its run while several wait, and each card by its title', async () => {

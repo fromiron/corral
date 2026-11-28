@@ -175,7 +175,12 @@ async function mainArea(
                 onOpenArtifact={vi.fn()}
                 runLine={<button type="button">Run #1</button>}
               />
-              <PendingTray sessionId="session_team" runs={runs} onOpenArtifact={vi.fn()} />
+              <PendingTray
+                sessionId="session_team"
+                runs={runs}
+                entries={[]}
+                onOpenArtifact={vi.fn()}
+              />
             </div>
             <div data-testid="chat-composer">
               <ComposerActivity

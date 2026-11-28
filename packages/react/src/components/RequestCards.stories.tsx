@@ -294,16 +294,21 @@ export const AnsweredExtension: Story = {
   },
 };
 
+const REQUESTS = [
+  'Rename the onboarding checklist and move it under Settings so new members find it on day one',
+  'Add a dark theme',
+];
+
 /**
  * Two runs waiting in one place, as a conversation's tray holds them: each area is named by its
  * run, and inside it every card by its own title, so no two landmarks share a name.
  */
 export const SeveralRuns: Story = {
   render: (args) => (
-    <div className="flex flex-col gap-3">
+    <div className="flex max-w-[26rem] flex-col gap-3">
       {(['Run #1', 'Run #2'] as const).map((run, index) => (
         <section key={run} aria-label={`${run} · Waiting for you`}>
-          <RequestRunContext.Provider value={run}>
+          <RequestRunContext.Provider value={{ name: run, request: REQUESTS[index] ?? null }}>
             <RequestAreaContext.Provider value={true}>
               <ApprovalPanel
                 {...args}
@@ -321,6 +326,19 @@ export const SeveralRuns: Story = {
     await expect(canvas.getByRole('region', { name: 'Run #2 · Waiting for you' })).toBeVisible();
     await expect(canvas.queryAllByRole('region', { name: 'Waiting for you' })).toHaveLength(0);
     await expect(canvas.queryAllByRole('article', { name: 'Waiting for you' })).toHaveLength(0);
+    const lineOf = (area: string) =>
+      canvas
+        .getByRole('region', { name: `${area} · Waiting for you` })
+        .querySelector<HTMLElement>('[data-request-owner]');
+    const [first, second] = [lineOf('Run #1'), lineOf('Run #2')];
+    const request = first?.querySelector<HTMLElement>('[data-request-of-run]');
+    if (!first || !second || !request) throw new Error('Missing the cards’ run lines');
+    await expect(first.textContent).toMatch(/^Run #1 · Rename the onboarding checklist/);
+    await expect(second.textContent).toMatch(/^Run #2 · Add a dark theme/);
+    await expect(request.scrollWidth).toBeGreaterThan(request.clientWidth);
+    for (const part of first.children)
+      if (part !== request) await expect(part.scrollWidth).toBeLessThanOrEqual(part.clientWidth);
+    await expect(first.scrollWidth).toBeLessThanOrEqual(first.clientWidth);
   },
 };
 
@@ -342,7 +360,7 @@ export const SeveralRunsAtLimits: Story = {
     <div className="flex flex-col gap-3">
       {(['Run #1', 'Run #2'] as const).map((run, index) => (
         <section key={run} aria-label={`${run} · Waiting for you`}>
-          <RequestRunContext.Provider value={run}>
+          <RequestRunContext.Provider value={{ name: run, request: REQUESTS[index] ?? null }}>
             <RequestAreaContext.Provider value={true}>
               <ContinueDecisions session={store([], [limitApproval(`limit_${index}`)])} />
             </RequestAreaContext.Provider>

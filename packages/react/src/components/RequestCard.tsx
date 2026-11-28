@@ -33,6 +33,7 @@ export function RequestCardHead({
   /** A control of the host's frame (see `RowAction`). */
   action?: ReactNode;
 }) {
+  const run = useContext(RequestRunContext);
   return (
     <div data-request-head className={requestCard.head}>
       <RowAction action={action} />
@@ -47,9 +48,20 @@ export function RequestCardHead({
         >
           {title}
         </p>
-        {owner ? (
-          <span data-request-owner className="truncate text-muted-foreground">
-            {owner}
+        {run || owner ? (
+          <span data-request-owner className="flex min-w-0 text-muted-foreground">
+            {run ? <span className="shrink-0">{run.name}</span> : null}
+            {run?.request ? (
+              <span data-request-of-run className="min-w-0 shrink-[1000] truncate whitespace-pre">
+                {` · ${run.request}`}
+              </span>
+            ) : null}
+            {owner ? (
+              <span className="min-w-0 truncate whitespace-pre">
+                {run ? ' · ' : ''}
+                {owner}
+              </span>
+            ) : null}
           </span>
         ) : null}
       </div>
@@ -59,10 +71,19 @@ export function RequestCardHead({
 }
 
 /**
- * The run a response place names on each of its cards, when it holds several runs' requests
- * (a conversation's needed-now tray with two runs waiting): its name in the session ("Run #2").
+ * The run a response place names on each of its cards, when it holds several runs' requests (a
+ * conversation's tray with two runs waiting): "Run #2", and the first line of what started it.
  */
-export const RequestRunContext = createContext<string | null>(null);
+export interface RequestRun {
+  name: string;
+  request: string | null;
+}
+export const RequestRunContext = createContext<RequestRun | null>(null);
+
+export function clipToCodePoints(text: string, longest: number) {
+  const points = Array.from(text);
+  return points.length > longest ? `${points.slice(0, longest).join('')}…` : text;
+}
 
 /**
  * Inside a response area its host names (Needs you, a run record, the tray's per-run area): the
@@ -72,8 +93,8 @@ export const RequestRunContext = createContext<string | null>(null);
 export const RequestAreaContext = createContext(false);
 
 /**
- * Who a request comes from, as its card's head names it: the role (the agent node) where the run
- * has more than one, and the run as well where the response place holds several runs' requests.
+ * Who a request comes from, as its card's head names it after the run: the role (the agent node)
+ * where the run has more than one, or where the response place holds several runs' requests.
  * A lone conversation run's request names nobody: the run's row already says whose it is.
  */
 export function useRequestOwner(session: RunSessionStore) {
@@ -96,8 +117,7 @@ export function useRequestOwner(session: RunSessionStore) {
   return ({ executionId, nodeId }: { executionId?: string | null; nodeId?: string | null }) => {
     const id = nodeId ?? (executionId ? executions?.[executionId]?.nodeId : undefined);
     const role = id ? (nodes?.find((node) => node.id === id)?.label ?? id) : null;
-    const parts = [run, run || roles > 1 ? role : null].filter(Boolean);
-    return parts.length ? parts.join(' · ') : null;
+    return run || roles > 1 ? role : null;
   };
 }
 
