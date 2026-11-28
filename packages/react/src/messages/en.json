@@ -2418,7 +2418,10 @@
       "external_observed": "Changed by a command or outside Corral",
       "mixed": "Written by Corral, then changed by a command or outside Corral"
     },
-    "externalBadge": "External",
+    "provenanceMark": {
+      "external_observed": "Command or outside",
+      "mixed": "Changed after Corral"
+    },
     "outsideRuns": "Outside runs",
     "compareRun": "Compare this run only",
     "compareRunNamed": "Compare {run} only",

@@ -1836,6 +1836,19 @@ function FilePath({ path }: { path: string }) {
 
 // ── file list helpers ───────────────────────────────────────
 
+function ProvenanceMark({
+  provenance,
+}: {
+  provenance: Exclude<FileChangeView['provenance'], 'managed_agent'>;
+}) {
+  const t = useTranslations('Files');
+  return (
+    <Badge size="sm" variant="secondary" title={t(`provenance.${provenance}`)}>
+      {t(`provenanceMark.${provenance}`)}
+    </Badge>
+  );
+}
+
 /** Lock files and build output: folded by default, but deletions stay in view. */
 const GENERATED =
   /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|Cargo\.lock|poetry\.lock|go\.sum|composer\.lock|Gemfile\.lock)$|(^|\/)(dist|build|generated|__generated__)\/|\.min\.(js|css)$/;
@@ -1850,7 +1863,7 @@ const STATUS_MARKS: Partial<Record<FileChangeView['status'], { letter: string; t
 
 /**
  * The files of the range, one line each: its review or read mark, name and folder, what changed
- * and, when it was not Corral's own write, an "External" badge. The head carries the count;
+ * and, when it was not Corral's own write, a mark naming its source. The head carries the count;
  * below the three-column width it also folds the list away once a file is chosen. Moving
  * between files is the list itself, or Shift+] and Shift+[ from anywhere in the review.
  */
@@ -1967,9 +1980,7 @@ function FileList({
                 names where on hover. */}
             {file.provenance !== 'managed_agent' ? (
               <span className="col-start-2 flex">
-                <Badge size="sm" variant="secondary" title={t(`provenance.${file.provenance}`)}>
-                  {t('externalBadge')}
-                </Badge>
+                <ProvenanceMark provenance={file.provenance} />
               </span>
             ) : null}
           </span>

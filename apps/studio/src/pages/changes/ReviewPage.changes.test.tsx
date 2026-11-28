@@ -748,17 +748,20 @@ it('while a comment is being written, adding it is the one primary action', asyn
   expect(primaries()).toEqual(['Review.sendReview']);
 });
 
-it('marks only files written outside Corral, with a badge whose tooltip names the source', async () => {
+it('marks only files not left as Corral wrote them, each source in its own words, with a tooltip that names it', async () => {
   const view = await mount({
     search: { scope: 'session' },
     files: ['corral.ts', 'outside.ts', 'mixed.ts'],
     provenance: { 'outside.ts': 'external_observed', 'mixed.ts': 'mixed' },
   });
   const badge = (path: string) =>
-    [...(view.fileButton(path)?.querySelectorAll<HTMLElement>('[title]') ?? [])].find(
-      (node) => node.textContent === 'Files.externalBadge',
+    [...(view.fileButton(path)?.querySelectorAll<HTMLElement>('[title]') ?? [])].find((node) =>
+      node.textContent?.startsWith('Files.provenanceMark.'),
     );
   expect(badge('corral.ts')).toBeUndefined();
+  expect(badge('outside.ts')?.textContent).toBe('Files.provenanceMark.external_observed');
+  expect(badge('mixed.ts')?.textContent).toBe('Files.provenanceMark.mixed');
+  expect(badge('outside.ts')?.textContent).not.toBe(badge('mixed.ts')?.textContent);
   expect(badge('outside.ts')?.getAttribute('title')).toBe('Files.provenance.external_observed');
   expect(badge('mixed.ts')?.getAttribute('title')).toBe('Files.provenance.mixed');
   // The badge sits under the name instead of taking the name's width beside the counts.

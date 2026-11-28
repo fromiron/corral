@@ -2418,7 +2418,10 @@
       "external_observed": "명령이나 Corral 밖에서 바뀜",
       "mixed": "Corral이 쓴 뒤 명령이나 Corral 밖에서 바뀜"
     },
-    "externalBadge": "외부 변경",
+    "provenanceMark": {
+      "external_observed": "명령·외부",
+      "mixed": "Corral이 쓴 뒤 바뀜"
+    },
     "outsideRuns": "실행 밖",
     "compareRun": "이 실행만 비교",
     "compareRunNamed": "{run}만 비교",
