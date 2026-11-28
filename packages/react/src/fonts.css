@@ -101,7 +101,8 @@
  * JetBrains Mono variable (wght axis) for `font-mono`: code, paths, diffs, the code editor and
  * the terminal. The kit names no monospace font and the system one differs from machine to
  * machine. Files come from @fontsource-variable/jetbrains-mono and are bundled by Vite; nothing
- * is fetched from the network. Each subset downloads only when its range is used.
+ * is fetched from the network. Each subset downloads when its range is used; the code editor and
+ * the terminal load every subset before they open, since they measure their columns once.
  */
 @font-face {
   font-family: "JetBrains Mono";
