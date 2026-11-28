@@ -48,7 +48,7 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
 
   // the next request carries the conversation; the first run is left as it was.
   await expect(box(page)).toHaveAccessibleDescription(
-    'Send to: new run in this conversation · next request',
+    'Send to: new run in this conversation · new request',
   );
   await box(page).fill('Now only for one writer');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -83,11 +83,13 @@ test('while a run works, a request waits in the queue until a person starts it',
   await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
   await box(page).fill('Then summarise it');
   await box(page).press('Alt+Enter');
-  const queue = page.getByRole('region', { name: 'Queued next tasks' });
+  const queue = page.getByRole('region', { name: 'Queued requests' });
   await expect(queue).toContainText('Then summarise it');
   // Auto start is the server's; the browser demo has none, so a person starts it.
   await expect(queue.getByRole('switch')).toHaveCount(0);
-  await expect(queue.getByRole('button', { name: 'Start now' })).toBeDisabled();
+  // While the run works there is no Start now, only the line that says when it can start.
+  await expect(queue.getByRole('button', { name: 'Start now' })).toHaveCount(0);
+  await expect(queue).toContainText('You can start it when the run ends');
   await expect(status(cards(page).first(), 'Completed')).toBeVisible({
     timeout: 20_000,
   });

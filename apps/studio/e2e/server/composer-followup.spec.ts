@@ -30,11 +30,15 @@ test.describe('saved requests with a stale instruction draft', () => {
         await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
         await box.fill('Saved queued request');
         await box.press('Alt+Enter');
-        await expect(page.getByRole('button', { name: 'Start now', exact: true })).toBeVisible();
+        // With auto start on, the card has no Start now while the run works.
+        await expect(page.getByRole('region', { name: 'Queued requests' })).toContainText(
+          'Saved queued request',
+        );
+        await expect(page.getByRole('button', { name: 'Start now', exact: true })).toHaveCount(0);
         if (path !== 'auto')
           await page
             .getByRole('switch', {
-              name: 'Start the next queued task when the run ends',
+              name: 'Start the next queued request when the run ends',
               exact: true,
             })
             .click();
@@ -89,7 +93,7 @@ test.fixme('same-name result references stay distinct after reload and deleting 
     await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(index + 1);
     await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
     await expect(page.getByTestId('composer-destination')).toContainText(
-      'new run in this session · next request',
+      'new run in this conversation · new request',
     );
   }
   await box.fill('@notes');

@@ -3,7 +3,7 @@ import { createTextAttachment, type SessionEntry } from '@corral/core';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ComposerQueue } from './ComposerQueue.tsx';
 
@@ -43,7 +43,15 @@ const entry = (entryId: string, text: string, extra: Partial<SessionEntry> = {})
   ...extra,
 });
 
-async function mount(queued: SessionEntry[], startDisabled = false) {
+async function mount(
+  queued: SessionEntry[],
+  startDisabled = false,
+  {
+    running = false,
+    autoStart = false,
+    autoStartShown = true,
+  }: { running?: boolean; autoStart?: boolean; autoStartShown?: boolean } = {},
+) {
   const handlers = {
     onStart: vi.fn(),
     onEdit: vi.fn(),
@@ -62,7 +70,9 @@ async function mount(queued: SessionEntry[], startDisabled = false) {
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <ComposerQueue
           queued={queued}
-          autoStart={false}
+          autoStart={autoStart}
+          autoStartShown={autoStartShown}
+          running={running}
           startDisabled={startDisabled}
           {...handlers}
         />
@@ -154,6 +164,77 @@ it('keeps Start now disabled under the existing condition', async () => {
   expect(start?.disabled).toBe(true);
   await act(async () => start?.click());
   expect(view.handlers.onStart).not.toHaveBeenCalled();
+});
+
+describe('Start now while a run is going (composer-flow.md: queued requests and handover)', () => {
+  const saved = () => entry('first', 'Summarize the report');
+  const resend = () =>
+    entry('resend', 'Summarize the report', {
+      resend: { of: 'sent', runId: 'run_failed', notBefore: '2026-11-25T10:43:00.000Z' },
+    });
+  const startAfterRun = messages.Sessions.startAfterRun;
+
+  it('with auto start on, the place is empty: the switch already says when it starts', async () => {
+    const view = await mount([saved()], false, { running: true, autoStart: true });
+    expect(view.buttons(messages.Sessions.startNow)).toHaveLength(0);
+    expect(startAfterRun).toBeTruthy();
+    expect(view.container.textContent).not.toContain(startAfterRun);
+  });
+
+  it('with auto start on, a resend keeps its time and nothing else', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-25T09:00:00.000Z'), toFake: ['Date'] });
+    const view = await mount([resend()], false, { running: true, autoStart: true });
+    expect(view.container.textContent).toContain('Resends at 10:43');
+    expect(view.buttons(messages.Sessions.startNow)).toHaveLength(0);
+    expect(view.container.textContent).not.toContain(startAfterRun);
+    vi.useRealTimers();
+  });
+
+  it('with auto start off, one line says it can start when the run ends', async () => {
+    const view = await mount([saved()], false, { running: true, autoStart: false });
+    expect(view.buttons(messages.Sessions.startNow)).toHaveLength(0);
+    const line = [...view.container.querySelectorAll('span')].find(
+      (node) => node.textContent === startAfterRun && node.childElementCount === 0,
+    );
+    expect(line?.className).toContain('text-caption');
+    expect(line?.className).toContain('text-muted-foreground');
+  });
+
+  it('with auto start off, a resend shows its time and the line', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-25T09:00:00.000Z'), toFake: ['Date'] });
+    const view = await mount([resend()], false, { running: true, autoStart: false });
+    expect(view.container.textContent).toContain('Resends at 10:43');
+    expect(view.container.textContent).toContain(startAfterRun);
+    expect(view.buttons(messages.Sessions.startNow)).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it('the browser demo has no switch, so it shows the line even with auto start on', async () => {
+    const view = await mount([saved()], false, {
+      running: true,
+      autoStart: true,
+      autoStartShown: false,
+    });
+    expect(view.container.querySelector('[role="switch"]')).toBeNull();
+    expect(view.buttons(messages.Sessions.startNow)).toHaveLength(0);
+    expect(view.container.textContent).toContain(startAfterRun);
+  });
+
+  it('without a run, a start being sent keeps the disabled button and no line', async () => {
+    const view = await mount([saved()], true, { running: false, autoStart: false });
+    const [start] = view.buttons(messages.Sessions.startNow);
+    expect(start?.disabled).toBe(true);
+    expect(view.container.textContent).not.toContain(startAfterRun);
+  });
+
+  it('without a run, Start now can be pressed and there is no line', async () => {
+    const view = await mount([saved()], false, { running: false, autoStart: true });
+    const [start] = view.buttons(messages.Sessions.startNow);
+    expect(start?.disabled).toBe(false);
+    await act(async () => start?.click());
+    expect(view.handlers.onStart).toHaveBeenCalledOnce();
+    expect(view.container.textContent).not.toContain(startAfterRun);
+  });
 });
 
 it('renders nothing without saved requests', async () => {

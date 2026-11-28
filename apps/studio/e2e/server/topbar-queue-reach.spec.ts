@@ -196,12 +196,12 @@ test.describe('a held run', () => {
     for (const text of texts) {
       await box.fill(text);
       await box.press('Alt+Enter');
-      await expect(page.getByRole('region', { name: 'Queued next tasks' })).toContainText(text);
+      await expect(page.getByRole('region', { name: 'Queued requests' })).toContainText(text);
     }
-    const queue = page.getByRole('region', { name: 'Queued next tasks' });
+    const queue = page.getByRole('region', { name: 'Queued requests' });
     // Left on, the server would start the first one when the run ends.
     await queue
-      .getByRole('switch', { name: 'Start the next queued task when the run ends', exact: true })
+      .getByRole('switch', { name: 'Start the next queued request when the run ends', exact: true })
       .click();
     // The card around a queued text (the text itself ignores the pointer).
     const card = (text: string) => queue.getByText(text, { exact: true }).locator('..');
@@ -215,7 +215,7 @@ test.describe('a held run', () => {
     // Collapsed, the cards past the peek are hidden.
     await expect.poll(() => shown(card('Fourth saved'))).toBe(false);
     await queue
-      .getByRole('switch', { name: 'Start the next queued task when the run ends', exact: true })
+      .getByRole('switch', { name: 'Start the next queued request when the run ends', exact: true })
       .focus();
     const seen = new Set<string>();
     let starts = 0;
