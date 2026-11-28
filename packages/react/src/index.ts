@@ -54,6 +54,7 @@ export { ReasoningLevelLabel, ReasoningSummary } from './components/ReasoningSum
 export { RecipeStatusPanel } from './components/RecipeStatusPanel.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
 export {
+  clipToCodePoints,
   RequestAreaContext,
   type RequestRun,
   RequestRunContext,

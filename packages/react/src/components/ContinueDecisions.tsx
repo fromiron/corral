@@ -4,7 +4,10 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Banner, BannerTitle, type Decision, DecisionInbox } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { RequestRunContext } from './RequestCard.tsx';
+import { clipToCodePoints, RequestRunContext } from './RequestCard.tsx';
+
+const REQUEST_IN_DETAIL = 60;
+
 import { nextResponseTarget } from './responseFocus.ts';
 
 /**
@@ -94,7 +97,7 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
       : '';
   // Who waits comes first, where the place names it, as under a request card's title.
   const detail = run
-    ? `${[run.name, run.request].filter(Boolean).join(' · ')}\n${t('limit.explain')}`
+    ? `${[run.name, run.request && clipToCodePoints(run.request, REQUEST_IN_DETAIL)].filter(Boolean).join(' · ')}\n${t('limit.explain')}`
     : t('limit.explain');
   const answers = (approval: ApprovalView) => ({
     primary: {

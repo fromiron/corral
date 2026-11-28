@@ -80,6 +80,11 @@ export interface RequestRun {
 }
 export const RequestRunContext = createContext<RequestRun | null>(null);
 
+export function clipToCodePoints(text: string, longest: number) {
+  const points = Array.from(text);
+  return points.length > longest ? `${points.slice(0, longest).join('')}…` : text;
+}
+
 /**
  * Inside a response area its host names (Needs you, a run record, the tray's per-run area): the
  * sections within add no name of their own, so a screen reader hears the area's name once and

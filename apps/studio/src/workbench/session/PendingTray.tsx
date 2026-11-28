@@ -3,6 +3,7 @@ import { pendingInteractions, type RunSummary, type SessionEntry } from '@corral
 import {
   AnswerDraftTarget,
   answeredExtensionNotices,
+  clipToCodePoints,
   firstLine,
   InteractionPanel,
   RequestRunContext,
@@ -60,11 +61,8 @@ const LONGEST_REQUEST_LINE = 200;
 
 function firstLineOfStartingRequest(entries: readonly Asked[], runId: string) {
   const started = entries.find((entry) => entry.runId === runId && entry.intent !== 'steer');
-  const points = Array.from(started ? firstLine(started.text) : '');
-  if (!points.length) return null;
-  return points.length > LONGEST_REQUEST_LINE
-    ? `${points.slice(0, LONGEST_REQUEST_LINE).join('')}…`
-    : points.join('');
+  const line = started ? firstLine(started.text) : '';
+  return line ? clipToCodePoints(line, LONGEST_REQUEST_LINE) : null;
 }
 
 type Asked = Pick<SessionEntry, 'runId' | 'intent' | 'text'>;

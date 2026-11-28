@@ -1436,7 +1436,7 @@ it('adds the first line of the request that started each run while several runs 
       { runId: 'run_a', intent: 'next', text: '\n  Fix the login redirect  \nand add a test' },
       // An instruction sent to a run did not start it.
       { runId: 'run_b', intent: 'steer', text: 'Use the smaller palette' },
-      { runId: 'run_b', intent: 'queue', text: 'Add a dark theme' },
+      { runId: 'run_b', intent: 'queue', text: `Add a dark theme ${'and more '.repeat(10)}` },
     ],
   });
   const tray = trayOf(container);
@@ -1448,10 +1448,11 @@ it('adds the first line of the request that started each run while several runs 
   );
   expect(
     tray?.querySelector('[data-approval="approval_b"] [data-request-owner]')?.textContent,
-  ).toBe('Run #2 · Add a dark theme');
+  ).toBe(`Run #2 · Add a dark theme ${'and more '.repeat(10)}`.trimEnd());
+  // A continue-or-stop decision carries it in its first line of detail, cut at sixty characters.
   expect(
     tray?.querySelector('[data-run-response="run_b"] [data-continue-decisions]')?.textContent,
-  ).toContain('Run #2 · Add a dark theme');
+  ).toContain(`Run #2 · ${`Add a dark theme ${'and more '.repeat(10)}`.slice(0, 60)}…\n`);
   // The areas keep their short names, and no internal ID is read out or shown.
   expect(
     [...(tray?.querySelectorAll('[data-testid="run-needs-you"]') ?? [])].map((area) =>
