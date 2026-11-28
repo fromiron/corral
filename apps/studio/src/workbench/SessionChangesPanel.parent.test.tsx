@@ -44,7 +44,11 @@ vi.mock('../pages/FilesViews.tsx', () => ({
   useBinding: () => ({ binding: null }),
 }));
 vi.mock('./CheckpointPanel.tsx', () => ({ CheckpointPanel: () => null }));
-vi.mock('./GitPanel.tsx', () => ({ GitPanel: () => null }));
+vi.mock('./GitPanel.tsx', () => ({
+  GitPanel: ({ paddockFailureSaid }: { paddockFailureSaid?: boolean }) => (
+    <i data-git-view data-said={paddockFailureSaid ? 'yes' : 'no'} />
+  ),
+}));
 vi.mock('../pages/changes/ReviewPage.tsx', () => ({
   ReviewContent: () => null,
   Checks: () => null,
@@ -208,6 +212,41 @@ it('says both failed reads in one place with one Try again that reads both again
   expect(view.container.querySelectorAll('[role="alert"]')).toHaveLength(0);
   expect(retries(view.container)).toHaveLength(0);
   expect(view.container.textContent).toContain('corral/x-abc123');
+});
+
+it('tells every view to read again from Try again, since the Git view keeps its own read', async () => {
+  const view = await render(sub, { ...ready, commits: 2 });
+  reads().gitStatus.mockRejectedValue(new Error('git offline'));
+  await readAgain();
+  const told = vi.fn();
+  window.addEventListener(WORKSPACE_CHANGED, told);
+  cleanups.push(async () => window.removeEventListener(WORKSPACE_CHANGED, told));
+  await act(async () => retries(view.container)[0]?.click());
+  expect(told).toHaveBeenCalledTimes(1);
+});
+
+it('keeps a failed Git state read under the head on the Git view and tells that view it is said', async () => {
+  const view = await render(sub, { ...ready, commits: 2 });
+  const tab = [...view.container.querySelectorAll<HTMLElement>('[role="tab"]')].find((item) =>
+    item.textContent?.includes('Git.title'),
+  );
+  if (!tab) throw new Error('Missing the Git tab');
+  await act(async () => tab.click());
+  const said = () => view.container.querySelector<HTMLElement>('[data-git-view]')?.dataset.said;
+  expect(said()).toBe('no');
+  const answered = reads().gitStatus.getMockImplementation();
+  reads().gitStatus.mockRejectedValue(new Error('git offline'));
+  await readAgain();
+  const alerts = view.container.querySelectorAll('[role="alert"]');
+  expect(alerts).toHaveLength(1);
+  expect(alerts[0]?.textContent).toContain('Files.gitReadFailed');
+  expect(retries(view.container)).toHaveLength(1);
+  expect(said()).toBe('yes');
+  if (answered) reads().gitStatus.mockImplementation(answered);
+  await act(async () => retries(view.container)[0]?.click());
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(view.container.querySelectorAll('[role="alert"]')).toHaveLength(0);
+  expect(said()).toBe('no');
 });
 
 it('reads the merge again when the tab comes on screen, not while it is hidden', async () => {

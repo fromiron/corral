@@ -83,11 +83,13 @@ export function GitPanel({
   projectId,
   mergeBranch,
   onRefresh,
+  paddockFailureSaid = false,
 }: {
   sessionId: string;
   projectId: string;
   mergeBranch?: string;
   onRefresh?: () => void;
+  paddockFailureSaid?: boolean;
 }) {
   const t = useTranslations('Git');
   const { workspaces, workspaceId, mode } = useServices();
@@ -584,7 +586,7 @@ export function GitPanel({
         <p role="status" className="text-caption text-muted-foreground">
           {t('loading')}
         </p>
-      ) : result.error ? (
+      ) : result.error && !(paddockFailureSaid && source === 'session') ? (
         <p role="alert" className="text-caption text-muted-foreground">
           {t('unavailable')}
         </p>

@@ -392,7 +392,7 @@ export function SessionChangesPanel({
               <p className="m-0">{tf('mergeReadFailed', { message: copy.mergeFailure })}</p>
             ) : null}
           </div>
-          <Button variant="tertiary" onClick={() => copy.reread()}>
+          <Button variant="tertiary" onClick={readWorkspaceAgain}>
             {tf('retry')}
           </Button>
         </div>
@@ -428,6 +428,7 @@ export function SessionChangesPanel({
               sessionId={session.sessionId}
               projectId={session.projectId}
               onRefresh={() => copy.reread(true)}
+              paddockFailureSaid={copy.gitFailure !== null}
               {...(mergeBranch ? { mergeBranch } : {})}
             />
           </div>
