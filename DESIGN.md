@@ -95,7 +95,9 @@ Appearance is one choice: system, light and dark use the palette above; a built-
 
 ## Typography
 
-Use the kit's six semantic roles. Font family is `Inter, "Pretendard Variable", system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font for Latin and the Pretendard Variable font for Hangul only (by `unicode-range`), and serves both from its own origin; the system font is the fallback while they load. Do not add a remote font request. Code, paths, diffs and the terminal retain a monospace family.
+Use the kit's six semantic roles. Font family is `Inter, "Pretendard Variable", system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font for Latin and the Pretendard Variable font for Hangul only (by `unicode-range`), and serves both from its own origin; the system font is the fallback while they load. Do not add a remote font request.
+
+Code, paths, diffs, the code editor and the terminal use `"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace` (`font-mono`). The kit names no monospace font, and the system one differs from machine to machine, so the studio bundles the JetBrains Mono variable font the same way as Inter: by `unicode-range`, from its own origin. Its coding ligatures are off everywhere: `!=` and `->` stay the characters that were written. The code editor and the terminal read the family from the same token and open after the face has loaded, so their columns are measured with it.
 
 | Role | Size / line height | Typical use |
 |---|---|---|
