@@ -587,6 +587,7 @@ test('a long multiline request keeps graph, events and run information reachable
   const views = monitor.getByRole('tablist', { name: 'Run views', exact: true });
   const graphTab = views.getByRole('tab', { name: 'Graph', exact: true });
   const eventsTab = views.getByRole('tab', { name: /^Events \d+$/ });
+  const resultsTab = views.getByRole('tab', { name: 'Results', exact: true });
   const info = monitor.getByRole('button', { name: 'Run info', exact: true });
   for (const viewport of [
     { width: 1280, height: 560 },
@@ -599,15 +600,34 @@ test('a long multiline request keeps graph, events and run information reachable
     await expect(graphTab).toBeInViewport({ ratio: 1 });
     await expect(eventsTab).toBeInViewport({ ratio: 1 });
     await expect(info).toBeInViewport({ ratio: 1 });
+    // Where the strip is narrow its last view may be cut, but enough shows to read its name;
+    // pressed, it comes clear of the cut.
+    await expect(resultsTab).toBeInViewport({ ratio: 0.4 });
     const graph = monitor.getByRole('group', { name: 'Run graph', exact: true });
+    const display = graph.getByRole('group', { name: 'Graph display', exact: true });
+    const asList = display.getByRole('button', { name: 'List', exact: true });
+    const asMap = display.getByRole('button', { name: 'Map', exact: true });
     // Too narrow for the map's names to read, the graph view starts as its list.
     if (viewport.width < 640) {
-      await expect(monitor.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
+      await expect(asList).toHaveAttribute('aria-pressed', 'true');
       await expect(graph.getByRole('table', { name: 'Agents', exact: true })).toBeInViewport();
-    } else await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
+      // The pair stays in its corner through both displays, and focus on the pressed one.
+      for (const [pressed, other] of [
+        [asMap, asList],
+        [asList, asMap],
+      ] as const) {
+        await pressed.click();
+        await expect(pressed).toHaveAttribute('aria-pressed', 'true');
+        await expect(pressed).toBeFocused();
+        await expect(other).toBeInViewport({ ratio: 1 });
+      }
+    } else {
+      await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
+      await expect(asMap).toHaveAttribute('aria-pressed', 'true');
+      await expect(asList).toBeInViewport({ ratio: 1 });
+    }
+    await resultsTab.click();
+    await expect(resultsTab).toBeInViewport({ ratio: 1 });
     await eventsTab.click();
     await expect(monitor.locator('[data-run-workspace-view="events"]')).toBeVisible();
     await graphTab.click();

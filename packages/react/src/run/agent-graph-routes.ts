@@ -24,6 +24,8 @@ export interface StageRect {
 const inside = (point: Point, rect: StageRect) =>
   point.x >= rect.x0 && point.x <= rect.x1 && point.y >= rect.y0 && point.y <= rect.y1;
 
+const AHEAD_OF_OPPOSITE = 10;
+
 /**
  * The middle of the stretch of a route that is in the open: outside the areas its own two agents
  * cover, where the line runs under a mark or behind a label. Falls back to the plain midpoint.
@@ -31,6 +33,7 @@ const inside = (point: Point, rect: StageRect) =>
 export function openMidpoint(
   route: AgentGraphRoute,
   covered: readonly StageRect[],
+  opposite = false,
 ): { point: Point; angle: number } {
   const STEPS = 48;
   const { points } = route;
@@ -64,7 +67,11 @@ export function openMidpoint(
     }
   }
   if (!best) return { point: route.label, angle: route.angle };
-  return along(points, (best[0] + best[1]) / 2 / STEPS);
+  const total = lengths.reduce((sum, value) => sum + value, 0);
+  const middle = (best[0] + best[1]) / 2 / STEPS;
+  const ahead =
+    opposite && total ? Math.min(best[1] / STEPS, middle + AHEAD_OF_OPPOSITE / total) : middle;
+  return alongLengths(points, lengths, ahead);
 }
 
 const CORNER = 8;

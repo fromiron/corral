@@ -1316,6 +1316,11 @@
     }
   },
   "RunCanvas": {
+    "display": {
+      "label": "Graph display",
+      "map": "Map",
+      "list": "List"
+    },
     "closePreview": "Close quick information",
     "loading": "Loading agent activity…",
     "label": "Run graph",
@@ -6218,11 +6223,6 @@
     "planCount": "{count, plural, one {# work plan} other {# work plans}}",
     "callBreakdown": "Timed calls of the selected execution",
     "modelCall": "Model request {no}",
-    "graphDisplay": {
-      "label": "Graph display",
-      "map": "Map",
-      "list": "List"
-    },
     "agentList": {
       "label": "Agents",
       "agent": "Agent",

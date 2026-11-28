@@ -170,6 +170,9 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'packages/react/src/components/GraphViewport.tsx', near: /labels\.zoomIn/ },
   { file: 'packages/react/src/components/GraphViewport.tsx', near: /labels\.zoomOut/ },
   { file: 'packages/react/src/components/GraphViewport.tsx', near: /labels\.fit/ },
+  // The run graph's Map and List pair over the same stage: the kit records screen keeps its
+  // view switch compact, and the pair matches the zoom controls it shares the stage with.
+  { file: 'packages/react/src/components/RunCanvas.tsx', near: /onDisplayChange\(option\)/ },
   // The meeting's top bar actions: the kit path bar keeps its actions compact.
   { file: 'apps/studio/src/pages/meeting/MeetingPage.tsx', near: /ref=\{recordsToggle\}/ },
   { file: 'apps/studio/src/pages/meeting/MeetingPage.tsx', near: /'sessionActions'/ },

@@ -208,6 +208,7 @@ export function RunCanvas({
   session,
   definition,
   display = 'map',
+  onDisplayChange,
   selectedNodeId,
   onSelectNode,
   renderNodePreview,
@@ -220,6 +221,7 @@ export function RunCanvas({
    * is shown, so its position and zoom survive the switch.
    */
   display?: 'map' | 'list';
+  onDisplayChange?: (display: 'map' | 'list') => void;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null, trigger?: HTMLElement | null) => void;
   renderNodePreview?: (
@@ -339,15 +341,17 @@ export function RunCanvas({
           t('relationCount', { kind: t(`relation.${relation.kind}`), count: relation.count }),
         )
         .join(' · ');
+      const opposite =
+        first.source !== first.target && groups.has(JSON.stringify([first.target, first.source]));
       const route = routeRelation({
         source: first.source,
         target: first.target,
         from: positions.get(first.source) ?? { x: 0, y: 0 },
         to: positions.get(first.target) ?? { x: 0, y: 0 },
         leads,
-        opposite: groups.has(JSON.stringify([first.target, first.source])),
+        opposite,
       });
-      const mark = openMidpoint(route, covered);
+      const mark = openMidpoint(route, covered, opposite);
       return {
         id,
         source: first.source,
@@ -550,9 +554,29 @@ export function RunCanvas({
   return (
     // The source AgentGraph names its stage as a group; a fieldset would imply form controls.
     // biome-ignore lint/a11y/useSemanticElements: a labelled group of agent buttons, not a form.
-    <div className="flex h-full w-full flex-col p-3" role="group" aria-label={t('label')}>
+    <div className="relative flex h-full w-full flex-col p-3" role="group" aria-label={t('label')}>
+      {onDisplayChange ? (
+        // biome-ignore lint/a11y/useSemanticElements: a labelled pair of toggle buttons, not a form.
+        <div
+          role="group"
+          aria-label={t('display.label')}
+          className={cn(shape.bg, 'absolute top-5 right-5 z-10 flex gap-0.5 bg-card p-0.5')}
+        >
+          {(['map', 'list'] as const).map((option) => (
+            <Button
+              key={option}
+              size="compact"
+              variant={display === option ? 'secondary' : 'ghost'}
+              aria-pressed={display === option}
+              onClick={() => onDisplayChange(option)}
+            >
+              {t(`display.${option}`)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
       {display === 'list' ? (
-        <AgentCard className="min-h-0 flex-1 overflow-auto p-2">
+        <AgentCard className={cn('min-h-0 flex-1 overflow-auto p-2', onDisplayChange && 'pt-11')}>
           {readingInitialHistory || !hasNodes ? (
             <p className="grid h-full place-items-center text-caption text-muted-foreground">
               {t(readingInitialHistory ? 'loading' : 'empty')}
@@ -589,7 +613,12 @@ export function RunCanvas({
             </div>
           ) : null}
           {selectedRelations.length ? (
-            <ul className="pointer-events-none absolute top-3 left-3 grid justify-items-start gap-1">
+            <ul
+              className={cn(
+                'pointer-events-none absolute top-3 left-3 grid grid-cols-[minmax(0,1fr)] justify-items-start gap-1',
+                onDisplayChange ? 'right-32' : 'right-3',
+              )}
+            >
               {selectedRelations.map((edge) => (
                 <li
                   key={edge.id}
@@ -597,13 +626,13 @@ export function RunCanvas({
                   aria-hidden
                   className={cn(
                     shape.chip,
-                    'inline-flex items-center gap-1 whitespace-nowrap bg-muted px-1.5 text-caption text-muted-foreground',
+                    'inline-flex max-w-full items-center gap-1 whitespace-nowrap bg-muted px-1.5 text-caption text-muted-foreground',
                   )}
                 >
                   <span className="text-foreground">{nameOf(edge.source)}</span>
-                  <ArrowRight data-direction size={12} />
+                  <ArrowRight data-direction size={12} className="shrink-0" />
                   <span className="text-foreground">{nameOf(edge.target)}</span>
-                  <span>{edge.description}</span>
+                  <span className="min-w-0 truncate">{edge.description}</span>
                 </li>
               ))}
             </ul>

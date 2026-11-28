@@ -62,7 +62,7 @@ let seq = 0;
 const event = (type: string, at: string, payload: Record<string, unknown>) =>
   ({ type, runSeq: ++seq, recordedAt: at, payload }) as unknown as RunEvent;
 
-function setup(initial: 'map' | 'list') {
+function setup(initial: 'map' | 'list', { switchable = true }: { switchable?: boolean } = {}) {
   const { definition } = researchTeamDraft();
   const projection = projectionWith({
     status: 'succeeded',
@@ -138,6 +138,7 @@ function setup(initial: 'map' | 'list') {
           session={session}
           definition={definition}
           display={display}
+          {...(switchable ? { onDisplayChange: setDisplay } : {})}
           selectedNodeId={selected}
           onSelectNode={(id) => {
             setSelected(id);
@@ -217,4 +218,36 @@ it('keeps the relationship map mounted while the list is shown', async () => {
   expect(document.querySelector('[data-graph-pane]')).toBe(pane);
   expect(pane?.closest('[hidden]')).toBeNull();
   expect(screen.queryByRole('table', { name: 'Agents' })).toBeNull();
+});
+
+const displayToggle = () => screen.queryByRole('group', { name: 'Graph display' });
+const displayButton = (name: 'Map' | 'List') =>
+  within(displayToggle() as HTMLElement).getByRole('button', { name });
+
+it('switches between the map and the list from inside the graph, and the buttons stay where they are', async () => {
+  setup('map');
+  const graph = screen.getByRole('group', { name: 'Run graph' });
+  expect(graph).toContainElement(displayToggle());
+  expect(document.querySelector('[data-graph-pane]')).not.toContainElement(displayToggle());
+  const toList = displayButton('List');
+  expect(displayButton('Map')).toHaveAttribute('aria-pressed', 'true');
+  expect(toList).toHaveAttribute('aria-pressed', 'false');
+  toList.focus();
+  await act(async () => fireEvent.click(toList));
+  expect(list()).toBeVisible();
+  expect(displayButton('List')).toBe(toList);
+  expect(toList).toHaveAttribute('aria-pressed', 'true');
+  expect(toList).toHaveFocus();
+  expect(toList.closest('[hidden]')).toBeNull();
+  const toMap = displayButton('Map');
+  toMap.focus();
+  await act(async () => fireEvent.click(toMap));
+  expect(document.querySelector('[data-graph-pane]')?.closest('[hidden]')).toBeNull();
+  expect(toMap).toHaveAttribute('aria-pressed', 'true');
+  expect(toMap).toHaveFocus();
+});
+
+it('draws no display buttons where nothing listens for the choice', () => {
+  setup('map', { switchable: false });
+  expect(displayToggle()).toBeNull();
 });

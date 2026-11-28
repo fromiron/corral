@@ -1316,6 +1316,11 @@
     }
   },
   "RunCanvas": {
+    "display": {
+      "label": "그래프 표시",
+      "map": "관계도",
+      "list": "목록"
+    },
     "closePreview": "빠른 정보 닫기",
     "loading": "활동 기록을 불러오는 중…",
     "label": "실행 그래프",
@@ -6218,11 +6223,6 @@
     "planCount": "작업 계획 {count}개",
     "callBreakdown": "선택한 실행 단위의 호출 시간",
     "modelCall": "모델 요청 {no}",
-    "graphDisplay": {
-      "label": "그래프 표시",
-      "map": "관계도",
-      "list": "목록"
-    },
     "agentList": {
       "label": "에이전트",
       "agent": "에이전트",

@@ -116,6 +116,7 @@ vi.mock('@corral/react', async (original) => {
       definition,
       session,
       display,
+      onDisplayChange,
       onSelectNode,
       selectedNodeId,
       renderNodePreview,
@@ -124,6 +125,7 @@ vi.mock('@corral/react', async (original) => {
       definition: CorralDefinition;
       session: RunSessionStore;
       display?: 'map' | 'list';
+      onDisplayChange?: (display: 'map' | 'list') => void;
       onSelectNode: (nodeId: string, trigger?: HTMLElement | null) => void;
       selectedNodeId: string | null;
       renderNodePreview?: (
@@ -140,10 +142,24 @@ vi.mock('@corral/react', async (original) => {
         if (display !== 'list' && fixture.fitZoom !== null) onFitWidthZoom?.(fixture.fitZoom);
       }, [display, observed, onFitWidthZoom]);
       return (
-        <div>
+        <div data-testid="run-canvas">
           <output data-testid="layout">
             {JSON.stringify({ definition, runId: session.getState().runId })}
           </output>
+          {onDisplayChange ? (
+            <fieldset aria-label="Graph display">
+              {(['map', 'list'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={(display ?? 'map') === option}
+                  onClick={() => onDisplayChange(option)}
+                >
+                  {option === 'map' ? 'Map' : 'List'}
+                </button>
+              ))}
+            </fieldset>
+          ) : null}
           {/* The real canvas draws the list rows with the same trigger as the map's nodes. */}
           <output data-testid="graph-display">{display ?? 'map'}</output>
           {[
@@ -2490,7 +2506,7 @@ const viewTab = (container: HTMLElement, name: string) =>
   );
 
 const chooseDisplay = async (container: HTMLElement, name: string) => {
-  const toggle = container.querySelector<HTMLElement>('[role="group"][aria-label="Graph display"]');
+  const toggle = container.querySelector<HTMLElement>('[aria-label="Graph display"]');
   expect(toggle).not.toBeNull();
   const option = [...(toggle?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
     (button) => button.textContent === name,
@@ -2499,6 +2515,17 @@ const chooseDisplay = async (container: HTMLElement, name: string) => {
   await act(async () => option?.click());
   return option;
 };
+
+it('leaves the choice between the map and the list to the graph, with no row of its own above it', async () => {
+  const { container } = await mount('inline_team', null, {});
+  const toggles = container.querySelectorAll('[aria-label="Graph display"]');
+  expect(toggles).toHaveLength(1);
+  const canvas = container.querySelector('[data-testid="run-canvas"]');
+  expect(canvas?.contains(toggles[0] as Element)).toBe(true);
+  const view = container.querySelector('[data-run-workspace-view="graph"]');
+  expect(view?.children).toHaveLength(1);
+  expect(view?.firstElementChild).toBe(canvas);
+});
 
 it('switches the graph between its map and list, keeping the choice across views and new events', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
@@ -2522,7 +2549,7 @@ it('starts the graph as its list when fitting the map across a narrow stage woul
   fixture.fitZoom = 0.43;
   const { container } = await mount('inline_team', null, {});
   expect(container.querySelector('[data-testid="graph-display"]')?.textContent).toBe('list');
-  const toggle = container.querySelector('[role="group"][aria-label="Graph display"]');
+  const toggle = container.querySelector('[aria-label="Graph display"]');
   const pressed = toggle?.querySelector('[aria-pressed="true"]');
   expect(pressed?.textContent).toBe('List');
 });
