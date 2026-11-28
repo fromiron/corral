@@ -714,6 +714,10 @@
     "runStarted": "Started {time}",
     "readOnly": "Read-only",
     "templateRoles": "Roles",
+    "templateTogether": "At the same time",
+    "templateLoop": "Repeats up to {rounds, plural, one {# round} other {# rounds}}",
+    "templateLoopUnlimited": "Repeats",
+    "templateCalls": "Calls",
     "editCopy": "Edit a copy",
     "templateNewConversation": "New conversation with {name}",
     "templateEditCopy": "Edit a copy of {name}",
@@ -928,7 +932,7 @@
       "connections": "Connections"
     },
     "browserOnly": "Model settings need the local server. The in-browser demo always uses simulated agents.",
-    "noLive": "This server runs simulated agents only.",
+    "noLive": "This server was started with models off. Start it again with models on to connect one.",
     "endpointChanged": "The endpoint address changed since the key was entered. Enter the key again.",
     "codexPermissions": "The Codex login file could not be verified as private. Check its permissions: restrict access to your user and system administrators on Windows, or use chmod 600 on macOS and Linux.",
     "apiKeyLabel": "API key",
@@ -2027,7 +2031,7 @@
     "select": "Select run {runId} to compare",
     "back": "Back to project home",
     "chooseRuns": "Choose two runs",
-    "chooseRunsHint": "Choose two runs from the project’s Runs list to compare their results.",
+    "empty": "Two runs aren’t chosen yet",
     "unnamedRun": "Run",
     "loading": "Reading the two runs",
     "readFailed": "The runs could not be read.",
@@ -3802,7 +3806,6 @@
       "detail": "Corral details",
       "newConversation": "New conversation with this Corral",
       "edit": "Edit",
-      "browseTemplates": "Browse templates",
       "storage": "Where Corrals are saved"
     },
     "skills": {

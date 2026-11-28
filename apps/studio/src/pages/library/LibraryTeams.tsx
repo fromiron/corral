@@ -23,15 +23,15 @@ import {
   TableRow,
   Tooltip,
 } from '@corral/react/design-kit';
-import { ChevronRight, Info } from '@corral/react/icons';
+import { Info } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type ChangeEvent, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged } from '../../projects.ts';
 import { useServices } from '../../services.tsx';
 import {
-  roleSteps,
+  teamShape,
   templateDefinition,
   useTemplateText,
   WORKSPACE_TEMPLATES,
@@ -40,6 +40,7 @@ import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../../workbench/chosen
 import { chooseNewSessionTeam } from '../../workbench/newSessionDraft.ts';
 import { useConfirmFocus } from '../../workbench/useConfirmFocus.ts';
 import { useSessionAge } from '../../workbench/useSessionAge.ts';
+import { TeamShape } from './TeamShape.tsx';
 
 // The library's saved teams and templates for one project (docs/specs/features/library.md).
 // Importing, duplicating, moving and deleting use the existing Corral API.
@@ -65,7 +66,6 @@ export function LibraryTeams({
   projects,
   corrals,
   onChanged,
-  onBrowseTemplates,
   toolbar,
 }: {
   projectId: string;
@@ -73,8 +73,6 @@ export function LibraryTeams({
   projects: ProjectSummary[];
   corrals: CorralSummary[];
   onChanged: () => void;
-  /** Switches the library to its Templates tab. */
-  onBrowseTemplates: () => void;
   /** The library's toolbar row, where this view's actions stand. */
   toolbar: HTMLElement | null;
 }) {
@@ -182,8 +180,8 @@ export function LibraryTeams({
     <>
       <Tooltip content={t('importHint')} className="max-w-xs">
         <Button
-          variant={teams.length ? 'tertiary' : 'ghost'}
-          size={teams.length ? 'compact' : 'default'}
+          variant="tertiary"
+          size="compact"
           disabled={busy}
           onClick={() => importInput.current?.click()}
           aria-description={t('importHint')}
@@ -205,23 +203,23 @@ export function LibraryTeams({
   );
   return (
     <div className="flex flex-col gap-6">
-      {teams.length && toolbar
+      {toolbar && (teams.length || !archived)
         ? // The list's actions; the Teams tab beside them already names the list and counts it.
           createPortal(
             <>
               {/* Where teams are kept is worth knowing once, not a line under the list. */}
-              <Tooltip content={storage} className="max-w-xs">
-                <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
-                  <Info aria-hidden />
-                </Button>
-              </Tooltip>
-              {archived ? null : (
-                <>
-                  {importButton}
-                  <Button size="compact" render={newTeamLink}>
-                    {t('new')}
+              {teams.length ? (
+                <Tooltip content={storage} className="max-w-xs">
+                  <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
+                    <Info aria-hidden />
                   </Button>
-                </>
+                </Tooltip>
+              ) : null}
+              {archived ? null : importButton}
+              {archived || !teams.length ? null : (
+                <Button size="compact" render={newTeamLink}>
+                  {t('new')}
+                </Button>
               )}
             </>,
             toolbar,
@@ -234,20 +232,10 @@ export function LibraryTeams({
       ) : null}
       <Errors errors={errors} />
       {teams.length === 0 ? (
-        <div className="grid justify-items-center gap-4">
-          <div className="w-full">
-            <EmptyState title={t('empty')} />
-          </div>
-          {archived ? null : (
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button render={newTeamLink}>{t('new')}</Button>
-              <Button variant="tertiary" onClick={onBrowseTemplates}>
-                {tl('teams.browseTemplates')}
-              </Button>
-              {importButton}
-            </div>
-          )}
-        </div>
+        <EmptyState
+          title={t('empty')}
+          action={archived ? undefined : <Button render={newTeamLink}>{t('new')}</Button>}
+        />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <Table aria-label={tl('teams.list')}>
@@ -414,16 +402,15 @@ export function LibraryTemplates({
 }) {
   const t = useTranslations('Workspace');
   const tp = useTranslations('Projects');
-  const format = useFormatter();
   const text = useTemplateText();
   const navigate = useNavigate();
-  // Each card shows the team its template makes: the roles in order, and whether any may
-  // change files or run commands.
+  // Each card shows the team its template makes: its shape, and whether any role may change
+  // files or run commands.
   const templates = useMemo(
     () =>
       WORKSPACE_TEMPLATES.map((id) => {
         const definition = templateDefinition(id, id.replaceAll('-', '_'), text);
-        return { id, steps: roleSteps(definition), readOnly: isReadOnlyTeam(definition) };
+        return { id, steps: teamShape(definition), readOnly: isReadOnlyTeam(definition) };
       }),
     [text],
   );
@@ -441,9 +428,9 @@ export function LibraryTemplates({
           <article key={id} aria-labelledby={`template-${id}`}>
             <Card className="h-full">
               <CardHeader>
-                <h3 id={`template-${id}`}>
+                <h2 id={`template-${id}`}>
                   <KitCardTitle>{t(`template.${id}.name`)}</KitCardTitle>
-                </h3>
+                </h2>
                 {readOnly ? (
                   <CardAction className="row-span-1">
                     <Badge variant="secondary" size="sm">
@@ -454,17 +441,7 @@ export function LibraryTemplates({
               </CardHeader>
               {steps.length ? (
                 <CardContent>
-                  <ol
-                    aria-label={t('templateRoles')}
-                    className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-caption text-muted-foreground"
-                  >
-                    {steps.map((names, index) => (
-                      <li key={names.join()} className="flex items-center gap-1">
-                        {index ? <ChevronRight aria-hidden className="size-3 shrink-0" /> : null}
-                        {format.list(names, { type: 'conjunction' })}
-                      </li>
-                    ))}
-                  </ol>
+                  <TeamShape steps={steps} label={t('templateRoles')} />
                 </CardContent>
               ) : null}
               <CardFooter className="mt-auto">

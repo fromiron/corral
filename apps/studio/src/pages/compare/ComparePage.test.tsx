@@ -78,8 +78,15 @@ it.each([{}, { a: 'run_one' }])(
     fixture.services = { transport: { getSnapshot: fixture.getSnapshot }, repository: {} };
     const container = await renderPage();
     expect(fixture.getSnapshot).not.toHaveBeenCalled();
-    expect(container.querySelector('a[href="/projects/project_current#runs"]')).not.toBeNull();
     expect(container.querySelector('[role="alert"]')).toBeNull();
+    // One empty state: its title line, and inside the box the one way to the Runs list.
+    const state = container.querySelector('[data-slot="empty-state"]') as HTMLElement;
+    expect(state.querySelector('b')?.textContent).toBe(messages.Compare.empty);
+    expect(state.querySelectorAll('p')).toHaveLength(0);
+    const toRuns = [...container.querySelectorAll('a[href="/projects/project_current#runs"]')];
+    expect(toRuns.map((link) => link.textContent)).toEqual([messages.Compare.chooseRuns]);
+    expect(state.contains(toRuns[0] as Element)).toBe(true);
+    expect(container.querySelectorAll('main p')).toHaveLength(0);
   },
 );
 

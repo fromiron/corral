@@ -5,16 +5,18 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { ModelSettingsPage } from './ModelSettingsPage.tsx';
 
 const fixture = vi.hoisted(() => ({
   models: {} as ModelsApi,
+  live: true,
   applied: [] as number[],
   // The providers the Connections tab was first drawn with.
   firstProviders: null as number | null,
 }));
 vi.mock('../../services.tsx', () => ({
-  useServices: () => ({ mode: 'server', live: true, models: fixture.models }),
+  useServices: () => ({ mode: 'server', live: fixture.live, models: fixture.models }),
 }));
 vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => async () => true,
@@ -112,7 +114,10 @@ vi.mock('./DecisionApiSettings.tsx', () => ({
 }));
 vi.mock('./ModelUsagePanel.tsx', () => ({ ModelUsagePanel: () => <p>usage panel</p> }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  fixture.live = true;
+});
 
 async function render() {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -283,4 +288,20 @@ it('draws the Connections tab once the lists are read, so its first rows are not
   } finally {
     await page.unmount();
   }
+});
+
+it('on a server started with models off, says so in one line and how to connect one, naming no option', async () => {
+  fixture.live = false;
+  const page = await render();
+  expect(page.tabs()).toHaveLength(0);
+  const state = page.container.querySelector('[data-slot="empty-state"]') as HTMLElement;
+  expect(state.textContent).toBe(messages.Models.noLive);
+  expect(state.querySelectorAll('p')).toHaveLength(0);
+  // The server, the CLI and the desktop app each turn models off under another name, so the line
+  // names none of them; the word the header already shows is not repeated.
+  for (const line of [messages.Models.noLive, ko.Models.noLive])
+    expect(line).not.toMatch(/--|no-live|demo|mock-only/);
+  expect(messages.Models.noLive).not.toMatch(/simulat/i);
+  expect(ko.Models.noLive).not.toContain('시뮬레이션');
+  await page.unmount();
 });
