@@ -517,7 +517,7 @@
     "pause": "실행 일시정지",
     "resume": "실행 재개",
     "cancelRun": "실행 중지",
-    "cancelRunQuestion": "이 실행을 중지할까요?",
+    "cancelRunQuestion": "이 실행을 중지하시겠습니까?",
     "cancelRunExplain": "모든 실행 단위와 그 하위 작업을 멈춥니다. 정리가 끝나야 중지가 확정되며, 원격 처리와 과금은 계속될 수 있습니다.",
     "confirmCancelRun": "실행 중지",
     "keepRunning": "계속 실행",
