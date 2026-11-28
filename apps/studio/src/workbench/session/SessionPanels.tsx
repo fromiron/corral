@@ -3,7 +3,7 @@ import type { TextAttachment } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { canReadArtifactBody, type RunSummary, type WorkSession } from '@corral/core';
 import { PresenceLabel, runResults } from '@corral/react';
-import { Button } from '@corral/react/design-kit';
+import { Button, SectionLabel } from '@corral/react/design-kit';
 import { FileText } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -180,9 +180,9 @@ export function useRunNames(runs: readonly RunSummary[], entries: WorkSession['e
 }
 
 /**
- * Results use the same final/partial classification as the conversation. A result whose text is
- * no longer kept, a final one a later run replaced included, is listed as the run's Results view
- * lists it: named, marked as no longer kept, and not offered to open.
+ * Results use the same final/partial classification as the conversation, grouped by the run that
+ * made them. A result whose text is no longer kept, a final one a later run replaced included, is
+ * named, says so where an open one says its kind, and is not offered to open.
  */
 export function ArtifactsPanel({
   runs,
@@ -195,14 +195,14 @@ export function ArtifactsPanel({
   const tr = useTranslations('Results');
   const td = useTranslations('Desktop');
   const ta = useTranslations('Artifact');
-  const tk = useTranslations('Docking');
   const tv = useTranslations('RunMonitor.resultVersions');
   const { transport } = useServices();
   type Item = {
     runId: string;
     id: string;
     label: string;
-    author: string;
+    role: string | null;
+    execution: string | null;
     kind: 'final' | 'partial' | 'intermediate';
     /** The run still keeps the text (api-contract.md, 산출물 본문 수명). */
     kept: boolean;
@@ -243,17 +243,14 @@ export function ArtifactsPanel({
             runId,
             id: artifact.artifactVersionId,
             label: `${artifact.name} v${artifact.version}`,
-            author: [
+            role:
               definition?.nodes.find(
                 (node) =>
                   node.id === snapshot.projection.executions[artifact.authorExecutionId]?.nodeId,
-              )?.label,
-              artifact.authorExecutionNumber
-                ? tr('authorExecution', { number: artifact.authorExecutionNumber })
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · '),
+              )?.label ?? null,
+            execution: artifact.authorExecutionNumber
+              ? tr('authorExecution', { number: artifact.authorExecutionNumber })
+              : null,
             kind: results.final.includes(artifact)
               ? 'final'
               : results.kind === 'partial'
@@ -290,57 +287,77 @@ export function ArtifactsPanel({
         </Button>
       </div>
     );
+  const groups = ended.flatMap((run) => {
+    const made = items.filter((item) => item.runId === run.runId);
+    return made.length
+      ? [{ runId: run.runId, heading: tw('runNumber', { number: runs.indexOf(run) + 1 }), made }]
+      : [];
+  });
   return (
     <div className="space-y-3">
-      {items.length === 0 ? (
+      {groups.length === 0 ? (
         <p className="text-caption text-muted-foreground">{tw('artifactsEmpty')}</p>
       ) : (
-        <ul aria-label={tk('artifacts')} className="flex flex-col gap-0.5">
-          {items.map((item) => {
-            const source = [
-              tw('runNumber', {
-                number: runs.findIndex((run) => run.runId === item.runId) + 1,
-              }),
-              item.author,
-            ]
-              .filter(Boolean)
-              .join(' · ');
-            const row = (released: boolean) => (
-              <>
-                <FileText className="shrink-0 text-muted-foreground" />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate">{item.label}</span>
-                  {/* A released body says so first, so a narrow row never cuts it off. */}
-                  <span className="truncate text-micro text-muted-foreground">
-                    {released ? `${tv('notKept')} · ${source}` : source}
-                  </span>
-                </span>
-                <span className="shrink-0 text-caption text-muted-foreground">{tr(item.kind)}</span>
-              </>
-            );
-            return (
-              <li key={`${item.runId}:${item.id}`}>
-                {item.kept ? (
-                  <Button
-                    variant="ghost"
-                    className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
-                    aria-label={`${tr(item.kind)} ${item.label} · ${source}`}
-                    onClick={() => onOpen(item.runId, item.id)}
-                  >
-                    {row(false)}
-                  </Button>
-                ) : (
-                  <div
-                    data-result-released=""
-                    className="flex min-h-9 w-full items-center gap-2.5 px-4 py-1.5 text-left text-body text-muted-foreground [&_svg]:size-4"
-                  >
-                    {row(true)}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        groups.map((group) => (
+          <section key={group.runId} aria-label={group.heading} className="flex flex-col gap-1">
+            <div className="px-4">
+              <SectionLabel>{group.heading}</SectionLabel>
+            </div>
+            <ul className="flex flex-col gap-0.5">
+              {group.made.map((item) => {
+                const row = (
+                  <>
+                    <FileText className="shrink-0 text-muted-foreground" />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{item.label}</span>
+                      {item.role || item.execution ? (
+                        <span className="flex min-w-0 text-micro text-muted-foreground">
+                          {item.role ? <span className="truncate">{item.role}</span> : null}
+                          {item.execution ? (
+                            <span className="shrink-0 whitespace-pre">
+                              {item.role ? ` · ${item.execution}` : item.execution}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-caption text-muted-foreground">
+                      {item.kept ? tr(item.kind) : tv('notKept')}
+                    </span>
+                  </>
+                );
+                return (
+                  <li key={item.id}>
+                    {item.kept ? (
+                      <Button
+                        variant="ghost"
+                        className="h-auto w-full justify-start gap-2.5 py-1.5 text-left text-foreground"
+                        aria-label={[
+                          `${tr(item.kind)} ${item.label}`,
+                          group.heading,
+                          item.role,
+                          item.execution,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        onClick={() => onOpen(item.runId, item.id)}
+                      >
+                        {row}
+                      </Button>
+                    ) : (
+                      <div
+                        data-result-released=""
+                        className="flex min-h-9 w-full items-center gap-2.5 px-4 py-1.5 text-left text-body text-muted-foreground [&_svg]:size-4"
+                      >
+                        {row}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))
       )}
       {ended.length > count ? (
         <Button variant="ghost" onClick={() => setCount((value) => value + 10)}>

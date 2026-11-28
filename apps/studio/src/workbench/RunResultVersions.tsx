@@ -12,7 +12,7 @@ import {
   TableRow,
   useSize,
 } from '@corral/react/design-kit';
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 
@@ -45,21 +45,30 @@ export function RunResultVersions({
   if (!projection || !results) return null;
   const source = (item: ResultItem) => {
     const execution = projection.executions[item.authorExecutionId];
-    if (!execution) return item.authorExecutionId;
+    if (!execution) return [{ part: 'agent', text: item.authorExecutionId }];
     const round = execution.iterationId
       ? projection.iterations[execution.iterationId]?.no
       : undefined;
     return [
-      definition?.nodes.find((node) => node.id === execution.nodeId)?.label ?? execution.nodeId,
+      {
+        part: 'agent',
+        text:
+          definition?.nodes.find((node) => node.id === execution.nodeId)?.label ?? execution.nodeId,
+      },
       // Parallel runs of one agent make same-named versions in the same attempt; the run's
       // execution number tells them apart, and the row starts as the result reader names the
       // author.
       ...(item.authorExecutionNumber
-        ? [t('authorExecution', { number: item.authorExecutionNumber })]
+        ? [
+            {
+              part: 'execution',
+              text: t('authorExecution', { number: item.authorExecutionNumber }),
+            },
+          ]
         : []),
-      ...(round ? [run('round', { no: round })] : []),
-      run('attempt', { no: execution.attemptNo }),
-    ].join(' · ');
+      ...(round ? [{ part: 'round', text: run('round', { no: round }) }] : []),
+      { part: 'attempt', text: run('attempt', { no: execution.attemptNo }) },
+    ];
   };
   const sections = [
     { id: 'final', heading: t('final'), items: results.final, final: true },
@@ -84,15 +93,15 @@ export function RunResultVersions({
     <div className="mx-auto w-full max-w-[1040px] px-6 py-5">
       <Table aria-label={monitor('results')} className="table-fixed">
         <colgroup>
-          <col className="w-1/2" />
-          <col className="w-1/3" />
+          <col className="w-2/5" />
           <col />
+          <col className="w-20" />
         </colgroup>
         <TableHeader>
           <TableRow>
             <TableHead>{m('name')}</TableHead>
             <TableHead>{m('source')}</TableHead>
-            <TableHead className="text-right">{m('version')}</TableHead>
+            <TableHead className="whitespace-nowrap text-right">{m('version')}</TableHead>
           </TableRow>
         </TableHeader>
         {sections.map((section) => (
@@ -143,10 +152,17 @@ export function RunResultVersions({
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="truncate" title={source(item)}>
-                    {source(item)}
+                  <TableCell>
+                    {source(item).map(({ part, text }, index, parts) => (
+                      <Fragment key={part}>
+                        {index ? ' ' : null}
+                        <span className="inline-block max-w-full">
+                          {index < parts.length - 1 ? `${text} ·` : text}
+                        </span>
+                      </Fragment>
+                    ))}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {m('versionNumber', { version: item.version })}
                   </TableCell>
                 </TableRow>

@@ -897,7 +897,7 @@
     "apps/studio/src/workbench/session/SessionDock.tsx": 36,
     "apps/studio/src/workbench/session/SessionEntries.tsx": 43,
     "apps/studio/src/workbench/session/SessionPanelSide.tsx": 62,
-    "apps/studio/src/workbench/session/SessionPanels.tsx": 38,
+    "apps/studio/src/workbench/session/SessionPanels.tsx": 37,
     "apps/studio/src/workbench/session/WorkTab.tsx": 33,
     "apps/studio/src/workbench/session/composer/AdvisorControl.tsx": 20,
     "apps/studio/src/workbench/session/composer/ComposerCard.tsx": 44,

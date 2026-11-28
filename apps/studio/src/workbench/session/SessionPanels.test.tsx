@@ -128,7 +128,7 @@ it('lists a partial result the run no longer keeps as a row that cannot be opene
     ),
   );
   await act(async () => {});
-  const rows = [...container.querySelectorAll('ul[aria-label] > li')];
+  const rows = [...container.querySelectorAll('section[aria-label] li')];
   expect(rows.map((row) => row.textContent)).toEqual([
     expect.stringContaining('notes v1'),
     expect.stringContaining('draft v1'),
@@ -217,7 +217,6 @@ const stateWord = (run: RunSummary) =>
     listedRunPresence(run).labelKey.split('.')[1] as keyof typeof messages.Presence.state
   ];
 
-
 const results = async (
   byRun: Record<string, RunProjection>,
   runs: RunSummary[],
@@ -276,6 +275,106 @@ it('does not offer to open a final result an earlier run no longer keeps', async
   expect(released?.querySelector('button')).toBeNull();
   expect(released?.textContent).toContain('Text no longer kept');
   expect(onOpen).not.toHaveBeenCalled();
+});
+
+it('groups results by run and keeps who made each and that its text is gone from being cut', async () => {
+  const nodes = [
+    { id: 'write', label: 'Assistant' },
+    { id: 'inv', label: 'Cause investigation' },
+  ];
+  const by = (id: string, artifactId: string, executionId: string, kept: boolean) => ({
+    ...version(id, artifactId),
+    authorExecutionId: executionId,
+    ...(kept ? {} : { bodyAvailable: false }),
+  });
+  const run = (
+    runId: string,
+    artifacts: RunProjection['artifacts'],
+    final: string,
+    carried: string[],
+  ) =>
+    ({
+      ...emptyProjection(runId),
+      status: 'succeeded',
+      artifacts,
+      executions: {
+        exec_a: { nodeId: 'write' },
+        exec_b: { nodeId: 'inv' },
+        exec_c: { nodeId: 'inv' },
+      },
+      executionOrder: ['exec_a', 'exec_b', 'exec_c'],
+      output: { nodeId: 'write', artifactVersionIds: [final] },
+      forkedFrom: carried.length
+        ? {
+            runId: 'run_0',
+            nodeId: 'write',
+            carried: [{ nodeId: 'inv', artifactVersionIds: carried }],
+          }
+        : null,
+    }) as unknown as RunProjection;
+  const { container } = await results(
+    {
+      run_1: run(
+        'run_1',
+        {
+          d1: by('d1', 'draft', 'exec_a', false),
+          n1: by('n1', 'notes', 'exec_b', false),
+          n2: by('n2', 'findings', 'exec_c', false),
+        },
+        'd1',
+        [],
+      ),
+      run_2: run(
+        'run_2',
+        {
+          d2: by('d2', 'draft', 'exec_a', true),
+          m1: by('m1', 'notes', 'exec_b', false),
+          m2: by('m2', 'findings', 'exec_c', true),
+        },
+        'd2',
+        ['m2'],
+      ),
+    },
+    [
+      { runId: 'run_1', status: 'succeeded' } as RunSummary,
+      { runId: 'run_2', status: 'succeeded' } as RunSummary,
+    ],
+    nodes,
+  );
+  // One group a run, newest first, each named once by its heading.
+  const groups = [...container.querySelectorAll('section[aria-label]')];
+  expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual(['Run #2', 'Run #1']);
+  expect(groups.map((group) => group.querySelector('h2')?.textContent)).toEqual([
+    'Run #2',
+    'Run #1',
+  ]);
+  const rows = groups.map((group) => [...group.querySelectorAll('li')]);
+  // The row does not repeat the run its group names.
+  for (const row of rows.flat()) expect(row.textContent).not.toContain('Run #');
+  // Every row of a run reads differently, the released ones too.
+  for (const list of rows) {
+    const texts = list.map((row) => row.textContent);
+    expect(new Set(texts).size).toBe(texts.length);
+  }
+  const released = rows[1]?.find((row) => row.textContent?.includes('notes v1'));
+  expect(released?.querySelector('button')).toBeNull();
+  // Who made it comes first; the role may shorten but its execution number never does.
+  expect(released?.textContent).toContain('Cause investigation');
+  const number = [...(released?.querySelectorAll('span') ?? [])].find(
+    (span) => span.textContent?.trim().endsWith('execution 2') && !span.querySelector('span'),
+  );
+  expect(number?.className).toContain('shrink-0');
+  // That the text is gone stands at the row's end, where the kind of an open one stands.
+  const end = (row: Element | null | undefined) =>
+    [...(row?.querySelectorAll('span') ?? [])].at(-1);
+  expect(end(released)?.textContent).toBe('Text no longer kept');
+  expect(end(released)?.className).toContain('shrink-0');
+  const open = rows[0]?.[0]?.querySelector('button');
+  expect(end(open)?.textContent).toBe('Final results');
+  expect(end(open)?.className).toContain('shrink-0');
+  expect(open?.getAttribute('aria-label')).toBe(
+    'Final results draft v1 · Run #2 · Assistant · execution 1',
+  );
 });
 
 it('tells above a past run that another run of the session goes, by its number and state', async () => {
